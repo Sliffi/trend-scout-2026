@@ -107,6 +107,7 @@ st.markdown("""
             letter-spacing: 0.02em !important;
             transition: all 0.2s ease !important;
             box-shadow: 0 4px 14px rgba(99,102,241,0.3) !important;
+            color: white !important;
         }
         div[data-testid="stButton"] > button[kind="primary"]:hover {
             transform: translateY(-2px) !important;
@@ -824,7 +825,6 @@ def render_output(output: list):
                 f'{emoji}</div>'
             )
 
-        # ── Aktien-Karte ──────────────────────────────────────────────────────
         st.markdown(f"""
         <div style="
             background: linear-gradient(145deg, #111827 0%, #0f172a 100%);
@@ -836,7 +836,6 @@ def render_output(output: list):
             font-family: 'Inter', sans-serif;
             box-shadow: 0 4px 24px rgba(0,0,0,0.4);
         ">
-            <!-- Header-Row: Logo + Name + Score -->
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:16px; flex:1;">
                     {logo_html}
@@ -858,7 +857,6 @@ def render_output(output: list):
                         </div>
                     </div>
                 </div>
-                <!-- Score-Badge -->
                 <div style="
                     background: radial-gradient(circle at 30% 30%, {color}22, {color}08);
                     border: 2px solid {color};
@@ -878,13 +876,11 @@ def render_output(output: list):
                                 letter-spacing:0.12em; margin-top:3px;">Signal-Score</div>
                 </div>
             </div>
-
-            <!-- Rang-Pill -->
             <div style="margin-bottom: 4px;">
                 <span style="background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.25);
                              color:#818cf8; font-size:0.72rem; font-weight:600; padding:2px 10px;
                              border-radius:99px; letter-spacing:0.06em;">
-                    # {rank} von {len(output)}
+                    Platz {rank} von {len(output)}
                 </span>
             </div>
         </div>
@@ -1141,7 +1137,8 @@ if scan_btn:
             progress=False,
             auto_adjust=True,
         )
-        prog_dl.progress(100, text="✅ Download abgeschlossen")
+        prog_dl.progress(100)
+        prog_dl.empty()  # sofort entfernen – kein "abgeschlossen"-Balken
     except Exception as e:
         st.error(f"❌ Yahoo-Finance-Download fehlgeschlagen: {e}")
         st.stop()
