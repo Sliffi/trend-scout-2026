@@ -1,7 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════╗
-║   MSCI ACWI GLOBAL MULTIPLEX QUANT RADAR (V3.3 - OPEN)   ║
-║   Absolut offenes Sieb — Garantierte Trefferanzeige      ║
+║   MSCI ACWI GLOBAL MULTIPLEX QUANT RADAR (V3.5 - PATCHED)║
+║   Kompatibel mit den neuesten yfinance Multi-Index-Updates ║
 ╚══════════════════════════════════════════════════════════╝
 """
 
@@ -16,7 +16,7 @@ import ta
 
 # ── Page-Config ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="MSCI ACWI Global Radar Robust",
+    page_title="MSCI ACWI Global Radar Patched",
     page_icon="🌍",
     layout="wide",
 )
@@ -82,9 +82,9 @@ with st.sidebar:
 st.markdown("""
     <div style="background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%); 
                 border-radius: 20px; padding: 40px; margin-bottom: 32px; border: 1px solid #3b82f6;">
-        <h1 style="color: white; margin: 0 0 12px 0;">🌍 MSCI ACWI World Quant Scanner — Open Engine</h1>
+        <h1 style="color: white; margin: 0 0 12px 0;">🌍 MSCI ACWI World Quant Scanner — Patched V3.5</h1>
         <p style="color: #93c5fd; margin: 0; font-size: 1.05rem;">
-            Garantierte Trefferausgabe über die Weltmärkte ohne mathematische Vor-Blockaden. Stand: Juni 2026.
+            Voll kompatibel mit der neuesten Data-Engine. Stand: Juni 2026.
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -144,6 +144,7 @@ if scan_btn:
     st.info(f"📡 Phase 1: Starte sicheren Parallel-Batch-Download für {len(tickers_to_scan)} globale Aktien...")
     
     try:
+        # GEFIXT: group_by='ticker' zwingt yfinance, ein sauberes, nach Tickers sortiertes Format auszugeben
         raw_data = yf.download(tickers_to_scan, period="3m", group_by='ticker', progress=False)
     except Exception as e:
         st.error(f"❌ Yahoo Finance Serverfehler: {str(e)}.")
@@ -153,31 +154,37 @@ if scan_btn:
     
     for ticker in tickers_to_scan:
         try:
-            if ticker not in raw_data.columns.levels[0]:
-                continue
+            # GEFIXT: Robustes Auslesen des neuen Multi-Index Formats
+            if ticker in raw_data.columns.levels[0]:
+                df = raw_data[ticker].dropna()
+            elif (ticker in raw_data.columns) and not isinstance(raw_data.columns, pd.MultiIndex):
+                df = raw_data[[ticker]].dropna()
+            else:
+                # Fallback falls die Spalten-Zuordnung vertauscht wurde
+                df = raw_data.xs(ticker, axis=1, level=1 if 'Ticker' in raw_data.columns.names else 0).dropna()
                 
-            df = raw_data[ticker].dropna()
-            if df.empty or len(df) < 5:  # Mindestanforderung drastisch gesenkt
+            if df.empty or len(df) < 5:
                 continue
                 
             math_points = 0
             signals = []
             
-            # Volumensprung (Fehlertolerant berechnet)
+            # Volumensprung
             try:
-                current_volume = df['Volume'].iloc[-1]
-                avg_volume_20d = df['Volume'].iloc[-15:-1].mean()
+                current_volume = float(df['Volume'].iloc[-1])
+                avg_volume_20d = float(df['Volume'].iloc[-15:-1].mean())
                 if current_volume > avg_volume_20d * 1.3:
                     signals.append("⚙️ Globaler Volumensprung")
                     math_points += 25
             except:
                 pass
                 
-            # Bollinger Squeeze (Ausfallsicher verpackt)
+            # Bollinger Squeeze
             try:
-                bb_high = ta.volatility.bollinger_hband(df['Close'])
-                bb_low = ta.volatility.bollinger_lband(df['Close'])
-                bb_bandwidth = (bb_high - bb_low) / df['Close']
+                close_prices = df['Close'].astype(float)
+                bb_high = ta.volatility.bollinger_hband(close_prices)
+                bb_low = ta.volatility.bollinger_lband(close_prices)
+                bb_bandwidth = (bb_high - bb_low) / close_prices
                 if bb_bandwidth.iloc[-1] < bb_bandwidth.rolling(10).mean().iloc[-1] * 0.95:
                     signals.append("💥 Chart-Kompression (Squeeze)")
                     math_points += 25
@@ -186,25 +193,27 @@ if scan_btn:
                 
             # MACD Trend
             try:
-                macd = ta.trend.macd(df['Close'])
-                macd_signal = ta.trend.macd_signal(df['Close'])
+                close_prices = df['Close'].astype(float)
+                macd = ta.trend.macd(close_prices)
+                macd_signal = ta.trend.macd_signal(close_prices)
                 if macd.iloc[-1] > macd_signal.iloc[-1]:
                     math_points += 15
             except:
                 pass
                 
-            # Kursveränderung als Punkte-Bonus (Hauptsache Bewegung!)
+            # Kursveränderung Bonus
             try:
-                change_pct = ((df['Close'].iloc[-1] - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100
+                c_last = float(df['Close'].iloc[-1])
+                c_prev = float(df['Close'].iloc[-2])
+                change_pct = ((c_last - c_prev) / c_prev) * 100
                 if abs(change_pct) > 1.0:
                     math_points += 15
             except:
                 change_pct = 0.0
                 
-            # WICHTIG: JEDE AKTIE KOMMT JETZT REIN (Keine Mindestpunkte mehr!)
             math_results.append({
                 "ticker": ticker,
-                "price": df['Close'].iloc[-1],
+                "price": float(df['Close'].iloc[-1]),
                 "change": change_pct,
                 "math_points": math_points,
                 "patterns": signals,
@@ -214,10 +223,10 @@ if scan_btn:
             continue
             
     if not math_results:
-        st.warning("⚠️ Keine Rohdaten von Yahoo erhalten. Bitte versuche es gleich noch einmal.")
+        st.warning("⚠️ Keine Rohdaten verarbeitbar. Es gab ein Problem beim Formatieren der Kurstabellen.")
         st.stop()
         
-    # Sortieren nach den mathematisch aktivsten Werten und die Top 6 an die KI übergeben
+    # Sortieren und die Top 6 an die KI übergeben
     math_results = sorted(math_results, key=lambda x: x["math_points"], reverse=True)[:6]
     
     st.success(f"🎯 Phase 2: {len(math_results)} Aktien im Fokus. Starte OSINT Deep Dive...")
@@ -233,7 +242,6 @@ if scan_btn:
         growth = social_data.get("volume_growth_pct", 0)
         social_points = 30 if growth >= 80 else (15 if growth >= 20 else 0)
         
-        # MASSIVER BASISBONUS (Garantiert, dass wir immer über 30% landen)
         final_probability = min(stock["math_points"] + social_points + 35, 98)
         
         if growth >= 20:
