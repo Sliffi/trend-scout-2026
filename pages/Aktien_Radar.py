@@ -37,66 +37,131 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        html, body, .stApp { font-family: 'Inter', sans-serif; background: #0f111a; color: #e2e8f0; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
-        div[data-testid="stMetric"] {
-            background: #1a1e2e;
-            border: 1px solid #2e3450;
-            padding: 16px;
-            border-radius: 12px;
-            text-align: center;
-        }
-        div[data-testid="stMetric"] label { color: #8892b0 !important; font-size: 0.78rem !important; }
-        div[data-testid="stMetric"] div[data-testid="stMetricValue"] { color: #e2e8f0 !important; font-size: 1.2rem !important; font-weight: 700; }
-
-        .score-card {
-            border-radius: 14px;
-            padding: 18px 12px;
-            text-align: center;
+        /* ── Global ─────────────────────────────────────────────────────── */
+        html, body, .stApp {
             font-family: 'Inter', sans-serif;
+            background: #080b14;
+            color: #e2e8f0;
         }
-        .signal-header {
-            font-size: 0.85rem;
-            color: #8892b0;
+        .stApp { background: linear-gradient(135deg, #080b14 0%, #0d1117 50%, #080b14 100%); }
+
+        /* ── Tabs ────────────────────────────────────────────────────────── */
+        div[data-testid="stTabs"] button {
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #64748b;
+            transition: all 0.2s ease;
+            padding: 10px 20px;
+        }
+        div[data-testid="stTabs"] button[aria-selected="true"] {
+            color: #818cf8;
+            background: rgba(99,102,241,0.1);
+            border-bottom: 2px solid #818cf8;
+        }
+        div[data-testid="stTabs"] button:hover { color: #a5b4fc; }
+
+        /* ── Sidebar ─────────────────────────────────────────────────────── */
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #0d1117 0%, #111827 100%);
+            border-right: 1px solid #1e2433;
+        }
+
+        /* ── Metric Cards ────────────────────────────────────────────────── */
+        div[data-testid="stMetric"] {
+            background: linear-gradient(135deg, #111827, #0f172a);
+            border: 1px solid #1e2433;
+            padding: 18px 16px;
+            border-radius: 14px;
+            text-align: center;
+            transition: all 0.25s ease;
+            cursor: default;
+        }
+        div[data-testid="stMetric"]:hover {
+            border-color: #6366f1;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(99,102,241,0.15);
+        }
+        div[data-testid="stMetric"] label {
+            color: #64748b !important;
+            font-size: 0.72rem !important;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            margin-bottom: 4px;
+            font-weight: 600;
         }
-        /* ── Expander: dunkler Hintergrund, lesbare Schrift ─────────────── */
-        /* Rahmen und Hintergrund des gesamten Expander-Blocks */
+        div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+            color: #f1f5f9 !important;
+            font-size: 1.15rem !important;
+            font-weight: 700;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        /* ── Primary Buttons ─────────────────────────────────────────────── */
+        div[data-testid="stButton"] > button[kind="primary"] {
+            background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
+            border: none !important;
+            border-radius: 12px !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.02em !important;
+            transition: all 0.2s ease !important;
+            box-shadow: 0 4px 14px rgba(99,102,241,0.3) !important;
+        }
+        div[data-testid="stButton"] > button[kind="primary"]:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 8px 24px rgba(99,102,241,0.45) !important;
+        }
+
+        /* ── Expander ────────────────────────────────────────────────────── */
         div[data-testid="stExpander"] {
-            background: #1a1e2e !important;
-            border: 1px solid #2e3450 !important;
-            border-radius: 10px !important;
+            background: linear-gradient(135deg, #111827, #0f172a) !important;
+            border: 1px solid #1e2433 !important;
+            border-radius: 12px !important;
+            margin-bottom: 6px !important;
+            transition: all 0.2s ease !important;
         }
-        /* Summary-Zeile (Titel des Expanders) */
+        div[data-testid="stExpander"]:hover {
+            border-color: #374151 !important;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3) !important;
+        }
         div[data-testid="stExpander"] summary {
-            background: #1a1e2e !important;
+            background: transparent !important;
             color: #e2e8f0 !important;
-            border-radius: 10px !important;
-        }
-        div[data-testid="stExpander"] summary:hover {
-            background: #232842 !important;
-        }
-        div[data-testid="stExpander"] summary span,
-        div[data-testid="stExpander"] summary p {
-            color: #e2e8f0 !important;
-        }
-        /* Inhaltsbereich des Expanders */
-        div[data-testid="stExpander"] details > div,
-        div[data-testid="stExpanderDetails"] {
-            background: #1a1e2e !important;
-            color: #c8d3e8 !important;
-            border-top: 1px solid #2e3450 !important;
+            border-radius: 12px !important;
+            font-weight: 500;
             padding: 12px 16px !important;
         }
-        div[data-testid="stExpander"] details > div p,
-        div[data-testid="stExpanderDetails"] p {
-            color: #c8d3e8 !important;
+        div[data-testid="stExpander"] summary:hover {
+            background: rgba(99,102,241,0.06) !important;
         }
+        div[data-testid="stExpander"] summary span,
+        div[data-testid="stExpander"] summary p { color: #e2e8f0 !important; }
+        div[data-testid="stExpander"] details > div,
+        div[data-testid="stExpanderDetails"] {
+            background: rgba(15,23,42,0.6) !important;
+            color: #cbd5e1 !important;
+            border-top: 1px solid #1e2433 !important;
+            padding: 14px 18px !important;
+            border-radius: 0 0 12px 12px !important;
+        }
+        div[data-testid="stExpander"] details > div p,
+        div[data-testid="stExpanderDetails"] p { color: #cbd5e1 !important; line-height: 1.65; }
+
+        /* ── Progress Bar ────────────────────────────────────────────────── */
+        div[data-testid="stProgress"] > div > div {
+            background: linear-gradient(90deg, #6366f1, #818cf8) !important;
+            border-radius: 99px !important;
+        }
+
+        /* ── Divider ─────────────────────────────────────────────────────── */
+        hr { border-color: #1e2433 !important; margin: 2rem 0 !important; }
+
+        /* ── Alerts ──────────────────────────────────────────────────────── */
+        div[data-testid="stAlert"] { border-radius: 12px !important; }
     </style>
 """, unsafe_allow_html=True)
+
 
 # ── Passwortschutz ────────────────────────────────────────────────────────────
 _APP_PASSWORD = "bvb"
@@ -699,106 +764,247 @@ with tab_scan:
 # CACHE-CHECK: Gleiche Anfrage innerhalb von 5 Min → direkt Ergebnis zeigen
 # ══════════════════════════════════════════════════════════════════════════════
 def render_output(output: list):
-    """Rendert die fertige Ergebnisliste (ausgelagert, damit Cache + Live denselben Code nutzen)."""
-    st.header(f"📊 Ausbruchs-Report — {len(output)} Top-Kandidaten")
-    st.divider()
+    """Rendert die fertige Ergebnisliste – Premium UI mit Logos & Hover-Effekten."""
 
-    for s in output:
+    # ── Header ────────────────────────────────────────────────────────────────
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(16,185,129,0.06));
+        border: 1px solid rgba(99,102,241,0.25);
+        border-radius: 20px;
+        padding: 28px 32px;
+        margin-bottom: 32px;
+        font-family: 'Space Grotesk', sans-serif;
+        text-align: center;
+    ">
+        <div style="font-size:2.4rem; font-weight:800; color:#f1f5f9; letter-spacing:-0.02em;">
+            📊 Ausbruchs-Report
+        </div>
+        <div style="color:#818cf8; font-size:1rem; margin-top:6px; font-weight:500;">
+            {len(output)} vielversprechende Kandidat{'en' if len(output)!=1 else ''} gefunden
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    for rank, s in enumerate(output, 1):
         emoji, color = score_badge(s["score"])
+        change_pos   = s["change"] >= 0
+        change_color = "#10b981" if change_pos else "#ef4444"
+        change_arrow = "▲" if change_pos else "▼"
+        logo_url     = s.get("logo_url", "")
+        holding      = s.get("holding_period", "Keine Schätzung.")
+        brief        = s.get("score_brief", "")
 
-        col_title, col_badge = st.columns([3, 1])
-        with col_title:
-            st.subheader(f"{s['name']}  ({s['ticker']})")
-            color_word = "green" if s["change"] >= 0 else "red"
-            st.markdown(
-                f"Aktueller Kurs: **\\${s['price']:.2f}** "
-                f"(:{color_word}[{s['change']:+.2f}%])"
-            )
-        with col_badge:
-            st.markdown(f"""
-            <div style="
-                background:{color}18;
-                border: 2px solid {color};
-                border-radius:14px;
-                padding:18px 10px;
-                text-align:center;
-                font-family:'Inter',sans-serif;">
-                <div style="font-size:2rem;">{emoji}</div>
-                <div style="font-size:2rem; font-weight:700; color:{color}; line-height:1.1;">
-                    {s['score']}<span style="font-size:1rem; color:#8892b0;">/100</span>
-                </div>
-                <div style="font-size:0.75rem; color:#8892b0; text-transform:uppercase;
-                            letter-spacing:0.1em; margin-top:4px;">Signal-Score</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # KI-Score-Zusammenfassung & Haltedauer
-        holding   = s.get("holding_period", "Keine Schätzung verfügbar.")
-        brief     = s.get("score_brief", "")
         hold_lower = holding.lower()
         if any(w in hold_lower for w in ["tag", "tage", "days"]):
-            hold_emoji = "⚡"
+            hold_emoji, hold_label = "⚡", "Kurzfristig"
         elif any(w in hold_lower for w in ["woche", "wochen", "week"]):
-            hold_emoji = "📅"
+            hold_emoji, hold_label = "📅", "Mittelfristig"
         else:
-            hold_emoji = "🗓️"
+            hold_emoji, hold_label = "🗓️", "Langfristig"
 
+        # Score-Farbe für Ring
+        ring_pct = s["score"]
+        ring_color = color
+
+        # Logo HTML
+        logo_html = (
+            f'<img src="{logo_url}" style="width:48px;height:48px;border-radius:10px;"
+            f'object-fit:contain;background:#fff;padding:4px;border:1px solid #1e2433;" '
+            f'onerror="this.style.display=\'none\'">'
+            if logo_url else
+            f'<div style="width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,{color}40,{color}20);'
+            f'display:flex;align-items:center;justify-content:center;font-size:1.4rem;border:1px solid {color}40;">'
+            f'{emoji}</div>'
+        )
+
+        # ── Aktien-Karte ──────────────────────────────────────────────────────
         st.markdown(f"""
         <div style="
-            background: linear-gradient(135deg, {color}12, {color}06);
-            border-left: 4px solid {color};
-            border-radius: 0 12px 12px 0;
-            padding: 16px 20px;
-            margin: 12px 0 18px 0;
+            background: linear-gradient(145deg, #111827 0%, #0f172a 100%);
+            border: 1px solid #1e2433;
+            border-top: 3px solid {color};
+            border-radius: 20px;
+            padding: 28px 32px 24px 32px;
+            margin-bottom: 8px;
             font-family: 'Inter', sans-serif;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.4);
         ">
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                <span style="font-size:1.4rem;">{emoji}</span>
-                <span style="font-weight:700; color:{color}; font-size:1.05rem;">
-                    Signal-Score {s['score']}/100 — KI-Bewertung
-                </span>
+            <!-- Header-Row: Logo + Name + Score -->
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px;">
+                <div style="display:flex; align-items:center; gap:16px; flex:1;">
+                    {logo_html}
+                    <div>
+                        <div style="font-family:'Space Grotesk',sans-serif; font-size:1.4rem; font-weight:700; color:#f1f5f9; line-height:1.2;">
+                            {s['name']}
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
+                            <span style="background:rgba(99,102,241,0.15); color:#818cf8; font-size:0.78rem;
+                                         font-weight:700; padding:3px 10px; border-radius:6px; letter-spacing:0.05em;">
+                                {s['ticker']}
+                            </span>
+                            <span style="color:{change_color}; font-size:0.95rem; font-weight:600;">
+                                {change_arrow} {abs(s['change']):.2f}%
+                            </span>
+                            <span style="color:#475569; font-size:0.88rem;">
+                                Kurs: <strong style="color:#e2e8f0;">${s['price']:.2f}</strong>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Score-Badge -->
+                <div style="
+                    background: radial-gradient(circle at 30% 30%, {color}22, {color}08);
+                    border: 2px solid {color};
+                    border-radius: 18px;
+                    padding: 16px 22px;
+                    text-align: center;
+                    min-width: 100px;
+                    flex-shrink: 0;
+                ">
+                    <div style="font-size:1.8rem; line-height:1;">{emoji}</div>
+                    <div style="font-family:'Space Grotesk',sans-serif; font-size:2.2rem; font-weight:800;
+                                color:{color}; line-height:1.1; margin-top:2px;">
+                        {s['score']}
+                        <span style="font-size:0.85rem; color:#475569; font-weight:400;">/100</span>
+                    </div>
+                    <div style="font-size:0.65rem; color:#64748b; text-transform:uppercase;
+                                letter-spacing:0.12em; margin-top:3px;">Signal-Score</div>
+                </div>
             </div>
-            <p style="margin:0 0 10px 0; color:#c8d3e8; font-size:0.92rem; line-height:1.55;">
-                {brief}
-            </p>
-            <div style="
-                display:inline-flex; align-items:center; gap:6px;
-                background:#1a1e2e; border:1px solid #2e3450;
-                border-radius:8px; padding:6px 14px;
-            ">
-                <span style="font-size:1.1rem;">{hold_emoji}</span>
-                <span style="color:#94a3b8; font-size:0.78rem; text-transform:uppercase;
-                            letter-spacing:0.07em;">Voraussichtliche Haltedauer:</span>
-                <span style="color:#e2e8f0; font-weight:600; font-size:0.9rem;">{holding}</span>
+
+            <!-- Rang-Pill -->
+            <div style="margin-bottom: 4px;">
+                <span style="background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.25);
+                             color:#818cf8; font-size:0.72rem; font-weight:600; padding:2px 10px;
+                             border-radius:99px; letter-spacing:0.06em;">
+                    # {rank} von {len(output)}
+                </span>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("### 🏢 Was macht das Unternehmen? *(einfach erklärt)*")
-        st.success(s["summary"])
+        # ── KI-Bewertungs-Box ──────────────────────────────────────────────────
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, {color}0e, {color}04);
+            border-left: 4px solid {color};
+            border-radius: 0 14px 14px 0;
+            padding: 18px 22px;
+            margin: 4px 0 16px 0;
+        ">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                <span style="font-size:1.2rem;">🤖</span>
+                <span style="font-weight:700; color:{color}; font-size:0.95rem;">
+                    Warum dieser Score? — Einfach erklärt
+                </span>
+            </div>
+            <p style="margin:0 0 14px 0; color:#cbd5e1; font-size:0.92rem; line-height:1.65;">{brief}</p>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <div style="display:inline-flex; align-items:center; gap:7px;
+                            background:rgba(15,23,42,0.8); border:1px solid #1e2433;
+                            border-radius:10px; padding:7px 16px;">
+                    <span style="font-size:1rem;">{hold_emoji}</span>
+                    <div>
+                        <div style="color:#64748b; font-size:0.68rem; text-transform:uppercase;
+                                    letter-spacing:0.08em; font-weight:600;">
+                            Emp. Haltedauer
+                        </div>
+                        <div style="color:#f1f5f9; font-weight:600; font-size:0.88rem;">{holding}</div>
+                    </div>
+                </div>
+                <div style="display:inline-flex; align-items:center; gap:7px;
+                            background:rgba(15,23,42,0.8); border:1px solid #1e2433;
+                            border-radius:10px; padding:7px 16px;">
+                    <span style="font-size:1rem;">⏱️</span>
+                    <div>
+                        <div style="color:#64748b; font-size:0.68rem; text-transform:uppercase;
+                                    letter-spacing:0.08em; font-weight:600;">Handelsstil</div>
+                        <div style="color:#f1f5f9; font-weight:600; font-size:0.88rem;">{hold_label}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        st.markdown("### 📊 Wichtige Finanz-Kennzahlen")
+        # ── Unternehmensbeschreibung ────────────────────────────────────────────
+        st.markdown("""
+        <div style="font-size:0.7rem; color:#64748b; text-transform:uppercase;
+                    letter-spacing:0.1em; font-weight:600; margin:16px 0 6px 2px;">
+            🏢 Was macht dieses Unternehmen?
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #0d1117, #111827);
+            border: 1px solid #1e2433;
+            border-radius: 14px;
+            padding: 18px 22px;
+            color: #cbd5e1;
+            font-size: 0.93rem;
+            line-height: 1.7;
+            margin-bottom: 20px;
+        ">{s['summary']}</div>
+        """, unsafe_allow_html=True)
+
+        # ── Kennzahlen ─────────────────────────────────────────────────────────
+        st.markdown("""
+        <div style="font-size:0.7rem; color:#64748b; text-transform:uppercase;
+                    letter-spacing:0.1em; font-weight:600; margin:0 0 8px 2px;">
+            📊 Wichtige Zahlen auf einen Blick
+        </div>
+        """, unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Börsenwert", s["cap"])
-        m2.metric("KGV (Bewertung)", s["pe"])
-        m3.metric("52-Wochen-Hoch ✅", f"${s['high_52w']:.2f}")
-        m4.metric("52-Wochen-Tief ✅", f"${s['low_52w']:.2f}")
+        m1.metric("🏦 Unternehmensgröße", s["cap"],
+                  help="Gesamtwert aller Aktien des Unternehmens an der Börse")
+        m2.metric("📈 Preis-Gewinn-Verhältnis", s["pe"],
+                  help="Wie viele Jahre Gewinn stecken im aktuellen Preis? Niedrig = günstiger, Hoch = teurer")
+        m3.metric("🔺 Jahreshöchstkurs", f"${s['high_52w']:.2f}",
+                  help="Der höchste Kurs der letzten 52 Wochen (1 Jahr)")
+        m4.metric("🔻 Jahrestiefstkurs", f"${s['low_52w']:.2f}",
+                  help="Der niedrigste Kurs der letzten 52 Wochen (1 Jahr)")
 
-        st.markdown("### 💡 Warum schlägt das System Alarm?")
+        # ── Signale ────────────────────────────────────────────────────────────
+        st.markdown("""
+        <div style="font-size:0.7rem; color:#64748b; text-transform:uppercase;
+                    letter-spacing:0.1em; font-weight:600; margin:20px 0 10px 2px;">
+            🔍 Erkannte Kaufsignale — Zum Aufklappen
+        </div>
+        """, unsafe_allow_html=True)
         for sig, exp in zip(s["signals"], s["explanations"]):
-            with st.expander(sig, expanded=False):
+            with st.expander(f"  {sig}", expanded=False):
                 st.markdown(exp)
 
-        st.markdown("### 🌐 KI-Lagebild & Social Media Stimmung")
-        sentiment_map = {
-            "Bullish": st.success,
-            "Neutral": st.info,
-            "Bearish": st.error,
-        }
-        sentiment_fn = sentiment_map.get(s["sentiment"], st.info)
-        sentiment_fn(f"**Forum-Stimmung:** {s['sentiment']}\n\n{s['hot_topic']}")
+        # ── Sentiment ──────────────────────────────────────────────────────────
+        sentiment = s.get("sentiment", "Neutral")
+        sent_cfg = {
+            "Bullish":  ("#10b981", "#052e16", "📈", "Positiv — Anleger sind optimistisch"),
+            "Neutral":  ("#6366f1", "#1e1b4b", "➡️", "Neutral — Abwartende Stimmung"),
+            "Bearish":  ("#ef4444", "#2d0a0a", "📉", "Negativ — Anleger sind vorsichtig"),
+        }.get(sentiment, ("#6366f1", "#1e1b4b", "➡️", sentiment))
+        sc, sbg, si, sl = sent_cfg
+        st.markdown(f"""
+        <div style="font-size:0.7rem; color:#64748b; text-transform:uppercase;
+                    letter-spacing:0.1em; font-weight:600; margin:20px 0 8px 2px;">
+            🌐 Aktuelle Marktstimmung laut KI & Nachrichten
+        </div>
+        <div style="background:{sbg}; border:1px solid {sc}40; border-radius:14px;
+                    padding:16px 20px; margin-bottom:20px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                <span style="font-size:1.3rem;">{si}</span>
+                <span style="font-weight:700; color:{sc}; font-size:0.95rem;">{sl}</span>
+            </div>
+            <div style="color:#cbd5e1; font-size:0.9rem; line-height:1.6;">{s['hot_topic']}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        st.markdown("### 📉 Technischer Chartverlauf *(letzte 6 Monate)*")
+        # ── Chart ──────────────────────────────────────────────────────────────
+        st.markdown("""
+        <div style="font-size:0.7rem; color:#64748b; text-transform:uppercase;
+                    letter-spacing:0.1em; font-weight:600; margin:0 0 8px 2px;">
+            📉 Kursverlauf der letzten 6 Monate
+        </div>
+        """, unsafe_allow_html=True)
         df = s["df"]
         close_s = df["Close"].astype(float)
         ma50_s  = close_s.rolling(50).mean()
@@ -810,30 +1016,36 @@ def render_output(output: list):
             increasing_line_color="#10b981",
             decreasing_line_color="#ef4444",
             name="Kurs",
+            increasing_fillcolor="rgba(16,185,129,0.6)",
+            decreasing_fillcolor="rgba(239,68,68,0.6)",
         ))
         fig.add_trace(go.Scatter(
             x=df.index, y=ma50_s, mode="lines",
-            line=dict(color="#f59e0b", width=1.8, dash="dash"),
-            name="MA50 (50-Tage-Ø)",
+            line=dict(color="#f59e0b", width=2, dash="dot"),
+            name="50-Tage-Durchschnitt",
         ))
         fig.update_layout(
             template="plotly_dark",
-            paper_bgcolor="#161925", plot_bgcolor="#161925",
-            height=430, margin=dict(l=20, r=20, t=35, b=20),
+            paper_bgcolor="#0d1117", plot_bgcolor="#0d1117",
+            height=420, margin=dict(l=10, r=10, t=30, b=10),
             xaxis_rangeslider_visible=False,
-            xaxis=dict(showgrid=True, gridcolor="#2e3440"),
-            yaxis=dict(showgrid=True, gridcolor="#2e3440", side="right"),
+            xaxis=dict(showgrid=True, gridcolor="#1e2433", showline=False),
+            yaxis=dict(showgrid=True, gridcolor="#1e2433", side="right", showline=False),
             legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                        bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
+                        bgcolor="rgba(0,0,0,0)", font=dict(size=11, color="#94a3b8")),
+            font=dict(family="Inter", color="#94a3b8"),
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(
-            "💡 **Lesehilfe:** Jede Kerze = ein Handelstag. "
-            "🟢 Grün = Kurs gestiegen, 🔴 Rot = Kurs gefallen. "
-            "Die **gelbe gestrichelte Linie** ist der 50-Tage-Durchschnitt (MA50) – "
-            "liegt der Kurs darüber, ist ein Aufwärtstrend bestätigt."
-        )
-        st.divider()
+        st.markdown("""
+        <div style="color:#475569; font-size:0.78rem; text-align:center; margin-top:-8px;">
+            💡 Jede Kerze = ein Handelstag &nbsp;·&nbsp;
+            🟩 Grüne Kerze = Kurs gestiegen &nbsp;·&nbsp;
+            🟥 Rote Kerze = Kurs gefallen &nbsp;·&nbsp;
+            <span style="color:#f59e0b;">⋯ Gelbe Linie</span> = 50-Tage-Durchschnitt
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown("<div style='margin:32px 0; border-top:1px solid #1e2433;'></div>",
+                    unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1064,6 +1276,7 @@ if scan_btn:
         high_52w        = None
         low_52w         = None
 
+        logo_url = ""
         try:
             info = yf.Ticker(stock["ticker"]).info
             company_name    = info.get("longName", stock["ticker"])
@@ -1074,9 +1287,16 @@ if scan_btn:
             if info.get("marketCap"):
                 market_cap = f"{info['marketCap'] / 1_000_000_000:.1f} Mrd. $"
 
-            # FIX: echte 52-Wochen-Werte aus yfinance-API (nicht aus 3-Monats-OHLC)
             high_52w = info.get("fiftyTwoWeekHigh")
             low_52w  = info.get("fiftyTwoWeekLow")
+
+            # Logo: zuerst yfinance, dann Clearbit-Fallback
+            logo_url = info.get("logo_url", "")
+            if not logo_url:
+                website = info.get("website", "")
+                if website:
+                    domain = website.replace("https://","").replace("http://","").replace("www.","").split("/")[0]
+                    logo_url = f"https://logo.clearbit.com/{domain}"
 
         except Exception:
             pass
@@ -1120,6 +1340,7 @@ if scan_btn:
             "hot_topic":      ki.get("hot_topic", ""),
             "score_brief":    ki.get("score_brief", ""),
             "holding_period": ki.get("holding_period", "Keine Schätzung verfügbar."),
+            "logo_url":       logo_url,
         })
 
     prog_ki.empty()
