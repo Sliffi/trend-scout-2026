@@ -184,6 +184,111 @@ st.title("🌍 MSCI ACWI Global Insights — V9.0 Pro")
 st.caption("Professionelle Ausbruchs-Analyse mit 6 technischen Signalen + KI-Erklärungen auf Deutsch. Stand: Juni 2026.")
 st.divider()
 
+# ── _yf_search: muss VOR den Tabs definiert sein, da tab_single sie aufruft ──
+def _yf_search(query: str) -> list:
+    """
+    Ruft die kostenlose Yahoo Finance Autocomplete-API auf.
+    Gibt eine Liste von dicts mit symbol, shortname, longname, exchange zurück.
+    Filtert auf handelbare Aktien (EQUITY) und ETFs.
+    """
+    try:
+        url = "https://query1.finance.yahoo.com/v1/finance/search"
+        params = {"q": query, "quotesCount": 10, "newsCount": 0, "enableFuzzyQuery": "true"}
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, params=params, headers=headers, timeout=8)
+        res.raise_for_status()
+        quotes = res.json().get("quotes", [])
+        allowed_types = {"EQUITY", "ETF", "MUTUALFUND"}
+        return [
+            q for q in quotes
+            if q.get("quoteType", "") in allowed_types
+            and q.get("symbol") and q.get("shortname")
+        ]
+    except Exception:
+        return []
+
+
+
+def _analyse_single_ticker(ticker: str, api_key: str) -> list:
+    """
+    Führt die komplette Analyse-Pipeline für einen einzelnen Ticker durch.
+    compute_signals/run_ki_analysis sind zur Aufrufzeit bereits definiert.
+    """
+    with st.spinner(f"📡 Lade Kursdaten für {ticker} (6 Monate) …"):
+        try:
+            raw = yf.download(ticker, period="6mo", progress=False, auto_adjust=True)
+            if isinstance(raw.columns, pd.MultiIndex):
+                df_ticker = pd.DataFrame({
+                    "Open":   raw["Open"][ticker],
+                    "High":   raw["High"][ticker],
+                    "Low":    raw["Low"][ticker],
+                    "Close":  raw["Close"][ticker],
+                    "Volume": raw["Volume"][ticker],
+                }).dropna()
+            else:
+                df_ticker = raw[["Open","High","Low","Close","Volume"]].dropna()
+        except Exception as e:
+            st.error(f"❌ Kursdaten für **{ticker}** konnten nicht geladen werden: {e}")
+            return []
+
+    if df_ticker.empty or len(df_ticker) < 20:
+        st.error(f"⚠️ Zu wenige Datenpunkte für **{ticker}** (< 20 Handelstage).")
+        return []
+
+    company_name = ticker
+    english_summary = ""
+    pe_ratio = market_cap = "N/A"
+    high_52w = low_52w = None
+    try:
+        info = yf.Ticker(ticker).info
+        company_name    = info.get("longName", ticker)
+        english_summary = info.get("longBusinessSummary", "")
+        if info.get("trailingPE"):  pe_ratio   = f"{info['trailingPE']:.1f}"
+        if info.get("marketCap"):   market_cap = f"{info['marketCap']/1_000_000_000:.1f} Mrd. $"
+        high_52w = info.get("fiftyTwoWeekHigh")
+        low_52w  = info.get("fiftyTwoWeekLow")
+    except Exception:
+        pass
+
+    if not high_52w: high_52w = float(df_ticker["High"].max())
+    if not low_52w:  low_52w  = float(df_ticker["Low"].min())
+
+    change_pct = (
+        (float(df_ticker["Close"].iloc[-1]) - float(df_ticker["Close"].iloc[-2]))
+        / float(df_ticker["Close"].iloc[-2])
+    ) * 100
+
+    with st.spinner("📊 Berechne technische Signale …"):
+        score, signals, explanations = compute_signals(df_ticker, high_52w=high_52w)
+
+    with st.spinner("🤖 KI analysiert Nachrichten & Stimmung …"):
+        ki = run_ki_analysis(api_key, ticker, english_summary or company_name,
+                             signals=signals, score=score)
+
+    sentiment   = ki.get("sentiment", "Neutral")
+    final_score = min(score + (10 if sentiment.lower() == "bullish" else 0), 100)
+
+    return [{
+        "ticker":         ticker,
+        "name":           company_name,
+        "price":          float(df_ticker["Close"].iloc[-1]),
+        "change":         change_pct,
+        "score":          final_score,
+        "signals":        signals,
+        "explanations":   explanations,
+        "sentiment":      sentiment,
+        "summary":        ki.get("german_summary", ""),
+        "hot_topic":      ki.get("hot_topic", ""),
+        "score_brief":    ki.get("score_brief", ""),
+        "holding_period": ki.get("holding_period", "Keine Schätzung."),
+        "pe":             pe_ratio,
+        "cap":            market_cap,
+        "high_52w":       high_52w,
+        "low_52w":        low_52w,
+        "df":             df_ticker,
+    }]
+
+
 tab_scan, tab_single = st.tabs([
     "🌍 Universum-Scanner",
     "🔍 Einzelaktie analysieren",
@@ -574,118 +679,6 @@ Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish"."""
             "holding_period": "Keine Schätzung verfügbar – KI-Analyse fehlgeschlagen.",
         }
 
-
-# ── Hilfsfunktionen für Einzelaktien-Suche ──────────────────────────────────
-
-def _yf_search(query: str) -> list:
-    """
-    Ruft die kostenlose Yahoo Finance Autocomplete-API auf.
-    Gibt eine Liste von dicts mit symbol, shortname, longname, exchange, quoteType zurück.
-    Filtert auf handelbare Aktien (EQUITY) und ETFs.
-    """
-    try:
-        url = "https://query1.finance.yahoo.com/v1/finance/search"
-        params = {
-            "q":           query,
-            "quotesCount": 10,
-            "newsCount":   0,
-            "enableFuzzyQuery": "true",
-        }
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, params=params, headers=headers, timeout=8)
-        res.raise_for_status()
-        quotes = res.json().get("quotes", [])
-        # Nur echte handelbare Instrumente (keine Indizes, Futures, Forex)
-        allowed_types = {"EQUITY", "ETF", "MUTUALFUND"}
-        filtered = [
-            q for q in quotes
-            if q.get("quoteType", "") in allowed_types
-            and q.get("symbol")
-            and q.get("shortname")
-        ]
-        return filtered
-    except Exception:
-        return []
-
-
-def _analyse_single_ticker(ticker: str, api_key: str) -> list:
-    """
-    Führt die komplette Analyse-Pipeline für einen einzelnen Ticker durch.
-    Gibt eine render_output()-kompatible Liste mit einem Element zurück.
-    """
-    with st.spinner(f"📡 Lade Kursdaten für {ticker} (6 Monate) …"):
-        try:
-            raw = yf.download(ticker, period="6mo", progress=False, auto_adjust=True)
-            if isinstance(raw.columns, pd.MultiIndex):
-                df_ticker = pd.DataFrame({
-                    "Open":   raw["Open"][ticker],
-                    "High":   raw["High"][ticker],
-                    "Low":    raw["Low"][ticker],
-                    "Close":  raw["Close"][ticker],
-                    "Volume": raw["Volume"][ticker],
-                }).dropna()
-            else:
-                df_ticker = raw[["Open","High","Low","Close","Volume"]].dropna()
-        except Exception as e:
-            st.error(f"❌ Kursdaten für **{ticker}** konnten nicht geladen werden: {e}")
-            return []
-
-    if df_ticker.empty or len(df_ticker) < 20:
-        st.error(f"⚠️ Zu wenige Datenpunkte für **{ticker}** (weniger als 20 Handelstage verfügbar).")
-        return []
-
-    # yfinance-Metadaten holen
-    company_name = ticker
-    english_summary = ""
-    pe_ratio = market_cap = "N/A"
-    high_52w = low_52w = None
-    try:
-        info = yf.Ticker(ticker).info
-        company_name    = info.get("longName", ticker)
-        english_summary = info.get("longBusinessSummary", "")
-        if info.get("trailingPE"):  pe_ratio   = f"{info['trailingPE']:.1f}"
-        if info.get("marketCap"):   market_cap = f"{info['marketCap']/1_000_000_000:.1f} Mrd. $"
-        high_52w = info.get("fiftyTwoWeekHigh")
-        low_52w  = info.get("fiftyTwoWeekLow")
-    except Exception:
-        pass
-
-    if not high_52w: high_52w = float(df_ticker["High"].max())
-    if not low_52w:  low_52w  = float(df_ticker["Low"].min())
-
-    change_pct = (
-        (float(df_ticker["Close"].iloc[-1]) - float(df_ticker["Close"].iloc[-2]))
-        / float(df_ticker["Close"].iloc[-2])
-    ) * 100
-
-    with st.spinner("📊 Berechne technische Signale …"):
-        score, signals, explanations = compute_signals(df_ticker, high_52w=high_52w)
-
-    with st.spinner("🤖 KI analysiert Nachrichten & Stimmung …"):
-        ki = run_ki_analysis(api_key, ticker, english_summary or company_name, signals=signals, score=score)
-
-    sentiment      = ki.get("sentiment", "Neutral")
-    final_score    = min(score + (10 if sentiment.lower() == "bullish" else 0), 100)
-
-    return [{
-        "ticker":         ticker,
-        "name":           company_name,
-        "price":          float(df_ticker["Close"].iloc[-1]),
-        "change":         change_pct,
-        "score":          final_score,
-        "signals":        signals,
-        "explanations":   explanations,
-        "sentiment":      sentiment,
-        "summary":        ki.get("german_summary", ""),
-        "hot_topic":      ki.get("hot_topic", ""),
-        "score_brief":    ki.get("score_brief", ""),
-        "holding_period": ki.get("holding_period", "Keine Schätzung."),
-        "pe":             pe_ratio,
-        "cap":            market_cap,
-        "high_52w":       high_52w,
-        "low_52w":        low_52w,
-        "df":             df_ticker,
-    }]
 
 
 # ── Scan-Button (Tab 1: Universum-Scan) ───────────────────────────────────────
