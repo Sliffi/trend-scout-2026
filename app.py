@@ -366,7 +366,7 @@ def call_gemini_with_grounding(api_key: str, prompt: str) -> dict:
     Garantiert fehlerfreie Authentifizierung für alle Key-Typen (AQ... und AIza...).
     """
     # REST-Endpunkt für strukturierte Content-Generierung
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     
     headers = {
         "Content-Type": "application/json",
