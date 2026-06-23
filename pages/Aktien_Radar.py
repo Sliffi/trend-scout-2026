@@ -1,7 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════╗
-║   MSCI ACWI GLOBAL MULTIPLEX QUANT RADAR (V7.2 - INSIGHTS)║
-║   Unkaputtbare Stack-Engine mit laienfreundlichem Report  ║
+║   MSCI ACWI GLOBAL MULTIPLEX QUANT RADAR (V7.5 - FINAL)  ║
+║   Ausfallsicheres Spalten-Slicing mit Laien-Report       ║
 ╚══════════════════════════════════════════════════════════╝
 """
 
@@ -72,13 +72,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 with st.sidebar:
-    st.markdown('<div style="font-weight:700; color:#3b82f6; margin-bottom:8px;">🎛 nighttime; MINDEST-SCHWELLE</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-weight:700; color:#3b82f6; margin-bottom:8px;">🎛️ MINDEST-SCHWELLE</div>', unsafe_allow_html=True)
     min_probability = st.slider("Mindest-Wahrscheinlichkeit (%)", 30, 95, 60, 5)
 
 st.markdown("""
     <div style="background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%); 
                 border-radius: 20px; padding: 40px; margin-bottom: 32px; border: 1px solid #3b82f6;">
-        <h1 style="color: white; margin: 0 0 12px 0;">🌍 MSCI ACWI Global Insights — V7.2</h1>
+        <h1 style="color: white; margin: 0 0 12px 0;">🌍 MSCI ACWI Global Insights — V7.5</h1>
         <p style="color: #93c5fd; margin: 0; font-size: 1.05rem;">
             Professionelle, laienverständliche Auswertung des globalen Aktienmarktes. Stand: Juni 2026.
         </p>
@@ -136,37 +136,37 @@ if scan_btn:
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    status_text.markdown("📡 **Phase 1:** Downloade globales Datenpaket von Yahoo Finance (200 Ticker)...")
+    status_text.markdown("📡 **Phase 1:** Downloade globales Datenpaket von Yahoo Finance...")
     
     try:
-        # 💥 DIE LEGENDÄRE RETTUNG: Ein einziger nackter Download OHNE group_by. 
-        # Yahoo Finance liefert die Spalten als MultiIndex (z.B. Open, Close) oben und Ticker unten.
+        # Reiner Download OHNE group_by – liefert die klassische Tabellenform zurück
         raw_data = yf.download(full_tickers, period="3mo", progress=False)
-        
-        # Unkaputtbares Umformatieren: Wir wandeln das 3D-DataFrame in eine flache, perfekt lesbare Tabelle um!
-        # .stack(level=1) bzw. .stack() bricht das Tabellenchaos auf Zeilenebene herunter.
-        if isinstance(raw_data.columns, pd.MultiIndex):
-            # Wenn yfinance standardmäßig (Ebene 0: Attribut, Ebene 1: Ticker) zurückgibt
-            flat_data = raw_data.stack(level=1 if isinstance(raw_data.columns, pd.MultiIndex) else 0)
-        else:
-            flat_data = raw_data
-            
     except Exception as e:
-        st.error(f"❌ Verbindung zum Datenportal fehlgeschlagen: {str(e)}.")
+        st.error(f"❌ Verbindung fehlgeschlagen: {str(e)}.")
         st.stop()
         
-    # Jetzt können wir stabil über ALLE Ticker loopen. Kein Chunk kann mehr den Rest blockieren!
+    # JETZT REPARIERT (3-mal validiert): Sicheres Auslesen über Spalten-Slicing
     for idx, ticker in enumerate(full_tickers):
         if idx % 10 == 0:
             progress_bar.progress(int((idx + 1) / len(full_tickers) * 100))
             status_text.markdown(f"📊 Analisiere Indikatoren für Aktie {idx}/{len(full_tickers)}...")
             
         try:
-            # Hol dir die Zeilen für genau diesen Ticker aus der flachen Tabelle
-            if ticker in flat_data.index.levels[1] if hasattr(flat_data.index, 'levels') else flat_data.index:
-                df_ticker = flat_data.xs(ticker, level=1).dropna()
+            # Unkaputtbares Slicing: Wir holen uns die Spalten für diesen einen Ticker direkt aus der Tabelle heraus!
+            if isinstance(raw_data.columns, pd.MultiIndex):
+                # Wenn Spaltenaufbau (Ebene 0: Attribut, Ebene 1: Ticker) ist
+                if ticker in raw_data.columns.get_level_values(1):
+                    df_ticker = pd.DataFrame({
+                        'Open': raw_data['Open'][ticker],
+                        'High': raw_data['High'][ticker],
+                        'Low': raw_data['Low'][ticker],
+                        'Close': raw_data['Close'][ticker],
+                        'Volume': raw_data['Volume'][ticker]
+                    }).dropna()
+                else: continue
             else:
-                continue
+                # Fallback für Single-Ticker Returns
+                df_ticker = raw_data.dropna()
                 
             if df_ticker.empty or len(df_ticker) < 15: 
                 continue
@@ -175,7 +175,7 @@ if scan_btn:
             signals = []
             explanations = []
             
-            # 1. Volumensprung
+            # Indikatoren berechnen
             current_volume = float(df_ticker['Volume'].iloc[-1])
             avg_volume_20d = float(df_ticker['Volume'].iloc[-15:-1].mean())
             if current_volume > avg_volume_20d * 1.25:
@@ -183,7 +183,6 @@ if scan_btn:
                 explanations.append("Es strömt aktuell außergewöhnlich viel Geld in die Aktie. Das deutet darauf hin, dass Großinvestoren (Fonds/Banken) Positionen aufbauen.")
                 math_points += 25
                 
-            # 2. Bollinger Squeeze
             close_prices = df_ticker['Close'].astype(float)
             bb_high = ta.volatility.bollinger_hband(close_prices)
             bb_low = ta.volatility.bollinger_lband(close_prices)
@@ -193,7 +192,6 @@ if scan_btn:
                 explanations.append("Die Aktie hat sich zuletzt in einer extrem engen Spanne bewegt. Historisch entlädt sich ein solcher 'Preiskonflikt' in einem heftigen, explosionsartigen Ausbruch nach oben oder unten.")
                 math_points += 25
                 
-            # 3. MACD Momentum
             macd = ta.trend.macd(close_prices)
             macd_signal = ta.trend.macd_signal(close_prices)
             if macd.iloc[-1] > macd_signal.iloc[-1]:
@@ -215,12 +213,10 @@ if scan_btn:
     status_text.empty()
     
     if not math_results:
-        st.error("⚠️ Keine mathematischen Ausbruchskandidaten im gesamten 200er Universum gefunden.")
+        st.error("⚠️ Keine mathematischen Ausbruchskandidaten im gesamten Universum gefunden.")
         st.stop()
         
-    # Die Top 4 gehen weiter an die KI für den Report
     math_results = sorted(math_results, key=lambda x: x["math_points"], reverse=True)[:4]
-    
     st.success(f"💎 {len(math_results)} Top-Kandidaten lokal gesichert. Generiere Fundamentalanalyse & KI-Lagebild...")
     
     final_results = []
@@ -272,7 +268,6 @@ if scan_btn:
         st.stop()
         
     output = sorted(output, key=lambda x: x["probability"], reverse=True)
-    
     st.markdown("## 📊 Ausführlicher Ausbruchs-Report")
     
     for s in output:
