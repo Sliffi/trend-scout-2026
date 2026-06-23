@@ -184,15 +184,67 @@ st.title("🌍 MSCI ACWI Global Insights — V9.0 Pro")
 st.caption("Professionelle Ausbruchs-Analyse mit 6 technischen Signalen + KI-Erklärungen auf Deutsch. Stand: Juni 2026.")
 st.divider()
 
-market_type = st.selectbox(
-    "Wähle das MSCI ACWI Universum für die Analyse:",
-    [
-        "MSCI ACWI: Top 200 Global Mega-Caps & Tech Leaders",
-        "MSCI ACWI: Top 200 Eurozone & Western Europe Champions",
-        "MSCI ACWI: Top 200 Emerging Markets & Asia-Pacific Giants",
-        "MSCI ACWI: Top 200 Global Financials, Energy & Materials",
-    ]
-)
+tab_scan, tab_single = st.tabs([
+    "🌍 Universum-Scanner",
+    "🔍 Einzelaktie analysieren",
+])
+
+with tab_scan:
+    market_type = st.selectbox(
+        "Wähle das MSCI ACWI Universum für die Analyse:",
+        [
+            "MSCI ACWI: Top 200 Global Mega-Caps & Tech Leaders",
+            "MSCI ACWI: Top 200 Eurozone & Western Europe Champions",
+            "MSCI ACWI: Top 200 Emerging Markets & Asia-Pacific Giants",
+            "MSCI ACWI: Top 200 Global Financials, Energy & Materials",
+        ]
+    )
+with tab_single:
+    st.markdown("🔍 **Aktiensuche** — Name oder Ticker eingeben (z. B. *Apple*, *Volkswagen*, *NVDA*)")
+    with st.form("single_search_form"):
+        search_col, btn_col = st.columns([4, 1])
+        with search_col:
+            search_query = st.text_input(
+                "Aktie suchen",
+                placeholder="z. B. Apple, Tesla, Siemens, BYD …",
+                label_visibility="collapsed",
+            )
+        with btn_col:
+            search_submitted = st.form_submit_button("🔍 Suchen", use_container_width=True, type="primary")
+
+    if search_submitted and search_query.strip():
+        st.session_state["search_query"]   = search_query.strip()
+        st.session_state["search_results"] = None  # Reset
+
+    if st.session_state.get("search_query"):
+        if st.session_state.get("search_results") is None:
+            with st.spinner("Suche läuft …"):
+                st.session_state["search_results"] = _yf_search(st.session_state["search_query"])
+
+        results = st.session_state.get("search_results", [])
+        if results:
+            options = [
+                f"{r['shortname']}  —  {r['symbol']}  ({r.get('exchange', '?')})"
+                for r in results
+            ]
+            chosen_label = st.radio(
+                "Bitte Aktie auswählen:",
+                options,
+                index=0,
+            )
+            chosen_idx   = options.index(chosen_label)
+            chosen_ticker = results[chosen_idx]["symbol"]
+
+            st.markdown(
+                f"> Ausgewählter Ticker: **`{chosen_ticker}`**  ·  "
+                f"{results[chosen_idx].get('longname') or results[chosen_idx].get('shortname', '')}"
+            )
+
+            if st.button("🚀 Diese Aktie vollständig analysieren", type="primary", use_container_width=True, key="single_analyse_btn"):
+                st.session_state["single_ticker"] = chosen_ticker
+        else:
+            st.warning(f"⚠️ Keine Ergebnisse für **{st.session_state['search_query']}** gefunden. Bitte anderen Begriff versuchen.")
+
 
 # ── Ticker-Listen ─────────────────────────────────────────────────────────────
 ACWI_TECH_200 = [
@@ -523,15 +575,130 @@ Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish"."""
         }
 
 
-# ── Scan-Button ───────────────────────────────────────────────────────────────
+# ── Hilfsfunktionen für Einzelaktien-Suche ──────────────────────────────────
+
+def _yf_search(query: str) -> list:
+    """
+    Ruft die kostenlose Yahoo Finance Autocomplete-API auf.
+    Gibt eine Liste von dicts mit symbol, shortname, longname, exchange, quoteType zurück.
+    Filtert auf handelbare Aktien (EQUITY) und ETFs.
+    """
+    try:
+        url = "https://query1.finance.yahoo.com/v1/finance/search"
+        params = {
+            "q":           query,
+            "quotesCount": 10,
+            "newsCount":   0,
+            "enableFuzzyQuery": "true",
+        }
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, params=params, headers=headers, timeout=8)
+        res.raise_for_status()
+        quotes = res.json().get("quotes", [])
+        # Nur echte handelbare Instrumente (keine Indizes, Futures, Forex)
+        allowed_types = {"EQUITY", "ETF", "MUTUALFUND"}
+        filtered = [
+            q for q in quotes
+            if q.get("quoteType", "") in allowed_types
+            and q.get("symbol")
+            and q.get("shortname")
+        ]
+        return filtered
+    except Exception:
+        return []
+
+
+def _analyse_single_ticker(ticker: str, api_key: str) -> list:
+    """
+    Führt die komplette Analyse-Pipeline für einen einzelnen Ticker durch.
+    Gibt eine render_output()-kompatible Liste mit einem Element zurück.
+    """
+    with st.spinner(f"📡 Lade Kursdaten für {ticker} (6 Monate) …"):
+        try:
+            raw = yf.download(ticker, period="6mo", progress=False, auto_adjust=True)
+            if isinstance(raw.columns, pd.MultiIndex):
+                df_ticker = pd.DataFrame({
+                    "Open":   raw["Open"][ticker],
+                    "High":   raw["High"][ticker],
+                    "Low":    raw["Low"][ticker],
+                    "Close":  raw["Close"][ticker],
+                    "Volume": raw["Volume"][ticker],
+                }).dropna()
+            else:
+                df_ticker = raw[["Open","High","Low","Close","Volume"]].dropna()
+        except Exception as e:
+            st.error(f"❌ Kursdaten für **{ticker}** konnten nicht geladen werden: {e}")
+            return []
+
+    if df_ticker.empty or len(df_ticker) < 20:
+        st.error(f"⚠️ Zu wenige Datenpunkte für **{ticker}** (weniger als 20 Handelstage verfügbar).")
+        return []
+
+    # yfinance-Metadaten holen
+    company_name = ticker
+    english_summary = ""
+    pe_ratio = market_cap = "N/A"
+    high_52w = low_52w = None
+    try:
+        info = yf.Ticker(ticker).info
+        company_name    = info.get("longName", ticker)
+        english_summary = info.get("longBusinessSummary", "")
+        if info.get("trailingPE"):  pe_ratio   = f"{info['trailingPE']:.1f}"
+        if info.get("marketCap"):   market_cap = f"{info['marketCap']/1_000_000_000:.1f} Mrd. $"
+        high_52w = info.get("fiftyTwoWeekHigh")
+        low_52w  = info.get("fiftyTwoWeekLow")
+    except Exception:
+        pass
+
+    if not high_52w: high_52w = float(df_ticker["High"].max())
+    if not low_52w:  low_52w  = float(df_ticker["Low"].min())
+
+    change_pct = (
+        (float(df_ticker["Close"].iloc[-1]) - float(df_ticker["Close"].iloc[-2]))
+        / float(df_ticker["Close"].iloc[-2])
+    ) * 100
+
+    with st.spinner("📊 Berechne technische Signale …"):
+        score, signals, explanations = compute_signals(df_ticker, high_52w=high_52w)
+
+    with st.spinner("🤖 KI analysiert Nachrichten & Stimmung …"):
+        ki = run_ki_analysis(api_key, ticker, english_summary or company_name, signals=signals, score=score)
+
+    sentiment      = ki.get("sentiment", "Neutral")
+    final_score    = min(score + (10 if sentiment.lower() == "bullish" else 0), 100)
+
+    return [{
+        "ticker":         ticker,
+        "name":           company_name,
+        "price":          float(df_ticker["Close"].iloc[-1]),
+        "change":         change_pct,
+        "score":          final_score,
+        "signals":        signals,
+        "explanations":   explanations,
+        "sentiment":      sentiment,
+        "summary":        ki.get("german_summary", ""),
+        "hot_topic":      ki.get("hot_topic", ""),
+        "score_brief":    ki.get("score_brief", ""),
+        "holding_period": ki.get("holding_period", "Keine Schätzung."),
+        "pe":             pe_ratio,
+        "cap":            market_cap,
+        "high_52w":       high_52w,
+        "low_52w":        low_52w,
+        "df":             df_ticker,
+    }]
+
+
+# ── Scan-Button (Tab 1: Universum-Scan) ───────────────────────────────────────
 CACHE_TTL_SECONDS = 300  # 5 Minuten
 
-scan_btn = st.button(
-    f"🚀  Globalen Premium-Scan starten  "
-    f"({len(MARKET_LISTS[market_type])} Aktien analysieren)",
-    use_container_width=True,
-    type="primary",
-)
+with tab_scan:
+    scan_btn = st.button(
+        f"🚀  Globalen Premium-Scan starten  "
+        f"({len(MARKET_LISTS[market_type])} Aktien analysieren)",
+        use_container_width=True,
+        type="primary",
+    )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CACHE-CHECK: Gleiche Anfrage innerhalb von 5 Min → direkt Ergebnis zeigen
@@ -674,6 +841,26 @@ def render_output(output: list):
         st.divider()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 2: Einzelaktien-Analyse — wird ausgelöst wenn single_ticker gesetzt ist
+# ══════════════════════════════════════════════════════════════════════════════
+if st.session_state.get("single_ticker"):
+    ticker_to_analyse = st.session_state.pop("single_ticker")
+    try:
+        active_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        st.error("🔑 **GEMINI_API_KEY** fehlt in den Streamlit-Secrets.")
+        st.stop()
+
+    st.divider()
+    st.markdown(f"## 🔍 Einzelanalyse: **{ticker_to_analyse}**")
+    result = _analyse_single_ticker(ticker_to_analyse, active_key)
+    if result:
+        render_output(result)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 1: Universum-Scan
+# ══════════════════════════════════════════════════════════════════════════════
 if scan_btn:
     cache = st.session_state.get("scan_cache", {})
     cache_key = market_type  # Cache-Schlüssel = gewähltes Universum
