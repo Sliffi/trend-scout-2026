@@ -125,15 +125,22 @@ if not st.session_state.get("authenticated", False):
         </div>
         """, unsafe_allow_html=True)
 
-        pw_input = st.text_input(
-            "Passwort",
-            type="password",
-            placeholder="Passwort eingeben …",
-            label_visibility="collapsed",
-        )
-        login_btn = st.button("🔓 Einloggen", use_container_width=True, type="primary")
+        pw_input  = ""
+        submitted = False
+        with st.form("login_form"):
+            pw_input  = st.text_input(
+                "Passwort",
+                type="password",
+                placeholder="Passwort eingeben …",
+                label_visibility="collapsed",
+            )
+            submitted = st.form_submit_button(
+                "🔓 Einloggen",
+                use_container_width=True,
+                type="primary",
+            )
 
-        if login_btn:
+        if submitted:
             if pw_input == _APP_PASSWORD:
                 st.session_state["authenticated"] = True
                 st.rerun()
