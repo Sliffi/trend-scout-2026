@@ -996,11 +996,42 @@ if scan_btn:
     filtered = [r for r in math_results if r["score"] >= min_score]
 
     if not filtered:
-        st.info(
-            f"ℹ️ Keine Aktie erreicht aktuell einen Score von **{min_score}+**. "
-            f"Bitte den Mindest-Score im Sidebar-Slider senken."
-        )
-        st.stop()
+        best_score = math_results[0]["score"] if math_results else 0
+        best_ticker = math_results[0]["ticker"] if math_results else "–"
+        st.markdown(f"""
+        <div style="
+            background: #2a2210;
+            border: 1px solid #6b5a00;
+            border-left: 4px solid #f59e0b;
+            border-radius: 0 10px 10px 0;
+            padding: 14px 20px;
+            margin-bottom: 16px;
+            font-family: 'Inter', sans-serif;
+        ">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+                <span style="font-size:1.4rem;">⚠️</span>
+                <span style="color:#f59e0b; font-weight:700; font-size:1.05rem;">
+                    Kein Kandidat erreicht Score {min_score}+
+                </span>
+            </div>
+            <div style="color:#d4b96a; font-size:0.9rem; line-height:1.6;">
+                Bester gefundener Score: <strong style="color:#e2e8f0;">{best_score}/100</strong>
+                ({best_ticker})<br>
+                <strong>Mögliche Gründe:</strong><br>
+                &nbsp; • <strong>Marktzeiten:</strong> Nach US-Börsenschluss (22:00 Uhr MEZ) kann
+                  das heutige Handelsvolumen in yfinance noch nicht aktuell sein → Volumen-Signal (+20 Pkt) fällt weg.<br>
+                &nbsp; • <strong>Marktstimmung:</strong> Heute war ein ruhiger Tag ohne starke Ausbrüche.<br>
+                &nbsp; • <strong>Schwellenwert:</strong> Mindest-Score im Sidebar auf <strong>{min_score}</strong> eingestellt — ggf. senken.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Zeige Top-5 trotzdem an (mit Hinweis)
+        if math_results:
+            st.info(f"📋 **Zeige trotzdem die Top {min(5, len(math_results))} besten Kandidaten** – auch wenn sie unter dem Mindest-Score liegen:")
+            filtered = math_results[:5]
+        else:
+            st.stop()
 
     # FIX: Top-N per Slider konfigurierbar (statt hardcoded 4)
     top_n = filtered[:max_ki]
