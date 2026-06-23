@@ -1126,27 +1126,41 @@ if scan_btn:
     full_tickers = MARKET_LISTS[market_type]
 
     # ── Phase 1: Daten-Download (6 Monate für MA50 + alle Indikatoren) ───────
-    st.info("📡 **Phase 1/3:** Downloade 6-Monats-Datenpaket von Yahoo Finance …")
-    prog_dl = st.progress(0, text="Download läuft …")
+    phase1_info = st.empty()
+    phase1_info.markdown("""
+    <div style="background:#0d1b2e; border:1px solid #1e3a5f; border-left:4px solid #3b82f6;
+                border-radius:0 10px 10px 0; padding:12px 18px; margin-bottom:12px;
+                font-family:'Inter',sans-serif; color:#93c5fd; font-size:0.9rem;">
+        📡 <strong>Schritt 1/3:</strong> Lade Kursdaten der letzten 6 Monate …
+    </div>
+    """, unsafe_allow_html=True)
+    prog_dl = st.progress(0)
 
     try:
-        # FIX: 6mo statt 3mo (notwendig für MA50 = 50 Handelstage)
         raw_data = yf.download(
             full_tickers,
             period="6mo",
             progress=False,
             auto_adjust=True,
         )
-        prog_dl.progress(100)
-        prog_dl.empty()  # sofort entfernen – kein "abgeschlossen"-Balken
+        prog_dl.empty()
+        phase1_info.empty()
     except Exception as e:
         st.error(f"❌ Yahoo-Finance-Download fehlgeschlagen: {e}")
         st.stop()
 
     # ── Phase 2: Technische Signale berechnen ─────────────────────────────────
-    st.info("📊 **Phase 2/3:** Berechne technische Signale für alle Aktien …")
+    phase2_scan_info = st.empty()
+    phase2_scan_info.markdown("""
+    <div style="background:#0d1b2e; border:1px solid #1e3a5f; border-left:4px solid #3b82f6;
+                border-radius:0 10px 10px 0; padding:12px 18px; margin-bottom:12px;
+                font-family:'Inter',sans-serif; color:#93c5fd; font-size:0.9rem;">
+        📊 <strong>Schritt 2/3:</strong> Berechne technische Signale für alle Aktien …
+    </div>
+    """, unsafe_allow_html=True)
     prog_scan = st.progress(0)
     status_scan = st.empty()
+
 
     math_results = []
 
@@ -1200,6 +1214,7 @@ if scan_btn:
 
     prog_scan.empty()
     status_scan.empty()
+    phase2_scan_info.empty()
 
     if not math_results:
         st.error(
@@ -1254,10 +1269,15 @@ if scan_btn:
     # FIX: Top-N per Slider konfigurierbar (statt hardcoded 4)
     top_n = filtered[:max_ki]
 
-    st.success(
-        f"✅ **{len(filtered)}** Kandidaten mit Score ≥ {min_score} gefunden. "
-        f"KI analysiert die Top **{len(top_n)}** …"
-    )
+    phase2_info = st.empty()
+    phase2_info.markdown(f"""
+    <div style="background:#0d1b0d; border:1px solid #1a3a1a; border-left:4px solid #10b981;
+                border-radius:0 10px 10px 0; padding:12px 18px; margin-bottom:12px;
+                font-family:'Inter',sans-serif; color:#6ee7b7; font-size:0.9rem;">
+        ✅ <strong>{len(filtered)} Ausbruchskandidaten</strong> vorqualifiziert (Score ≥ {pre_filter_score}).
+        KI analysiert jetzt die Top <strong>{len(top_n)}</strong> im Detail …
+    </div>
+    """, unsafe_allow_html=True)
 
     # ── Phase 3: KI-Analyse + echte 52w-Daten aus yf.Ticker.info ─────────────
     st.info("🤖 **Phase 3/3:** KI liest Unternehmensprofil & aktuelle Nachrichten …")
@@ -1279,7 +1299,7 @@ if scan_btn:
         high_52w        = None
         low_52w         = None
 
-        logo_url = ""
+        logo_url = f"https://assets.parqet.com/logos/symbol/{stock['ticker']}?format=png"
         try:
             info = yf.Ticker(stock["ticker"]).info
             company_name    = info.get("longName", stock["ticker"])
@@ -1293,8 +1313,7 @@ if scan_btn:
             high_52w = info.get("fiftyTwoWeekHigh")
             low_52w  = info.get("fiftyTwoWeekLow")
 
-            # Logo: zuerst yfinance, dann Clearbit-Fallback
-            logo_url = info.get("logo_url", "")
+            # Clearbit-Fallback falls Parqet nichts liefert
             if not logo_url:
                 website = info.get("website", "")
                 if website:
@@ -1348,17 +1367,14 @@ if scan_btn:
 
     prog_ki.empty()
     status_ki.empty()
+    phase2_info.empty()
 
-    output = sorted(
-        [s for s in final_results if s["score"] >= min_score],
-        key=lambda x: x["score"],
-        reverse=True,
-    )
+    # Alle analysierten Kandidaten zeigen (sortiert nach Score)
+    # Kein zweiter Score-Filter – alle wurden bereits mit der KI analysiert
+    output = sorted(final_results, key=lambda x: x["score"], reverse=True)
 
     if not output:
-        st.info(
-            f"ℹ️ Nach KI-Neubewertung erreicht keine Aktie den Score von **{min_score}**."
-        )
+        st.info("ℹ️ Keine Ergebnisse verfügbar. Bitte Scan wiederholen.")
         st.stop()
 
     # ── Ergebnis im Session-State cachen (5 Minuten) ─────────────────────────
