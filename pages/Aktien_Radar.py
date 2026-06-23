@@ -332,10 +332,10 @@ def compute_signals(df: pd.DataFrame, high_52w: float | None = None):
         current_price = float(close.iloc[-1])
         ma50_val = float(ma50.iloc[-1])
         if pd.notna(ma50_val) and current_price > ma50_val:
-            signals.append(f"📊 Bestätigter Aufwärtstrend (Preis > MA50: ${ma50_val:.2f})")
+            signals.append(f"📊 Bestätigter Aufwärtstrend (Preis > MA50: \\${ma50_val:.2f})")
             explanations.append(
-                f"Der aktuelle Kurs (${current_price:.2f}) liegt über dem "
-                f"50-Tage-Durchschnitt (${ma50_val:.2f}). Das bestätigt einen "
+                f"Der aktuelle Kurs (\\${current_price:.2f}) liegt über dem "
+                f"50-Tage-Durchschnitt (\\${ma50_val:.2f}). Das bestätigt einen "
                 f"übergeordneten Aufwärtstrend – ein wichtiges Filter-Kriterium "
                 f"für Long-Trades. Ausbrüche im Aufwärtstrend haben statistisch "
                 f"eine deutlich höhere Erfolgsquote."
@@ -353,7 +353,7 @@ def compute_signals(df: pd.DataFrame, high_52w: float | None = None):
             )
             explanations.append(
                 f"Der Kurs ist nur noch **{dist * 100:.1f}%** vom 52-Wochen-Hoch "
-                f"(${high_52w:.2f}) entfernt. Ein Durchbruch dieser Marke wäre ein "
+                f"(\\${high_52w:.2f}) entfernt. Ein Durchbruch dieser Marke wäre ein "
                 f"sehr starkes bullisches Signal: Der wichtigste Jahreswiderstand "
                 f"würde fallen, was oft eine Kaufwelle institutioneller Anleger auslöst."
             )
