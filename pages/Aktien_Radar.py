@@ -129,4 +129,148 @@ Gibt es signifikante Hype-Spikes? Antworte NUR als valides JSON:
         match = re.search(r"\{[\s\S]*\}", raw_text)
         return json.loads(match.group(0))
     except Exception:
-        return {"volume_growth_pct": 0
+        return {"volume_growth_pct": 0, "reddit_sentiment": "Neutral", "hot_topic": "Stabile globale Akkumulation."}
+
+# ── HAUPTPROZESS ─────────────────────────────────────────────────────────────
+if scan_btn:
+    try:
+        active_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        st.error("🔑 Der Key wurde im Streamlit-Tresor nicht gefunden! Bitte trage ihn dort als GEMINI_API_KEY ein.")
+        st.stop()
+        
+    tickers_to_scan = MARKET_LISTS[market_type]
+    
+    st.info(f"📡 Phase 1: Starte sicheren Parallel-Batch-Download für {len(tickers_to_scan)} globale Aktien...")
+    
+    # JETZT KORRIGIERT: EIN einziger, gebündelter Download-Request (Kein IP-Sperren-Risiko durch Schleifen!)
+    try:
+        raw_data = yf.download(tickers_to_scan, period="3m", group_by='ticker', progress=False)
+    except Exception as e:
+        st.error(f"❌ Yahoo Finance Serverfehler: {str(e)}. Bitte versuche es in wenigen Sekunden noch einmal.")
+        st.stop()
+        
+    math_results = []
+    
+    # Berechne Indikatoren aus der geladenen Tabelle
+    for ticker in tickers_to_scan:
+        try:
+            # Überprüfen, ob Ticker erfolgreich geladen wurde
+            if ticker not in raw_data.columns.levels[0]:
+                continue
+                
+            df = raw_data[ticker].dropna()
+            if df.empty or len(df) < 20:
+                continue
+                
+            math_points = 0
+            signals = []
+            
+            # Volumensprung
+            current_volume = df['Volume'].iloc[-1]
+            avg_volume_20d = df['Volume'].iloc[-21:-1].mean()
+            if current_volume > avg_volume_20d * 1.4:
+                signals.append("⚙️ Globaler Volumensprung")
+                math_points += 25
+                
+            # Bollinger Squeeze
+            bb_high = ta.volatility.bollinger_hband(df['Close'])
+            bb_low = ta.volatility.bollinger_lband(df['Close'])
+            bb_bandwidth = (bb_high - bb_low) / df['Close']
+            if bb_bandwidth.iloc[-1] < bb_bandwidth.rolling(15).mean().iloc[-1] * 0.90:
+                signals.append("💥 Chart-Kompression (Squeeze)")
+                math_points += 25
+                
+            # MACD
+            macd = ta.trend.macd(df['Close'])
+            macd_signal = ta.trend.macd_signal(df['Close'])
+            if macd.iloc[-1] > macd_signal.iloc[-1]:
+                math_points += 15
+                
+            # RSI Grundrauschen abfangen (Garantierte Füllung bei 30%)
+            rsi = ta.momentum.rsi(df['Close'], window=14).iloc[-1]
+            if rsi > 50:
+                math_points += 15
+                
+            math_results.append({
+                "ticker": ticker,
+                "price": df['Close'].iloc[-1],
+                "change": ((df['Close'].iloc[-1] - df['Close'].iloc[-2]) / df['Close'].iloc[-2]) * 100,
+                "math_points": math_points,
+                "patterns": signals,
+                "df": df
+            })
+        except Exception:
+            continue
+            
+    if not math_results:
+        st.warning("⚠️ Keine nennenswerten Kursbewegungen in diesem Sektor registriert.")
+        st.stop()
+        
+    # Sortieren und Top 8 isolieren
+    math_results = sorted(math_results, key=lambda x: x["math_points"], reverse=True)[:8]
+    
+    st.success(f"🎯 Phase 2: {len(math_results)} Aktien im Fokus. Starte OSINT Deep Dive...")
+    
+    final_results = []
+    ki_progress = st.progress(0)
+    ki_status = st.empty()
+    
+    for idx, stock in enumerate(math_results):
+        ki_status.markdown(f"🌍 Scanne globale Forennetzwerke für **{stock['ticker']}**...")
+        social_data = fetch_social_volume_via_ki(active_key, stock["ticker"])
+        
+        growth = social_data.get("volume_growth_pct", 0)
+        social_points = 30 if growth >= 100 else (15 if growth >= 45 else 0)
+        
+        final_probability = min(stock["math_points"] + social_points + 15, 98)
+        
+        if growth >= 45:
+            stock["patterns"].append(f"🔥 Social-Spike (+{growth}%)")
+            
+        stock["probability"] = final_probability
+        stock["social_sentiment"] = social_data.get("reddit_sentiment", "Neutral")
+        stock["social_topic"] = social_data.get("hot_topic", "Keine akuten Ausreißer.")
+        
+        final_results.append(stock)
+        ki_progress.progress(int((idx + 1) / len(math_results) * 100))
+        
+    ki_progress.empty()
+    ki_status.empty()
+    
+    output = [s for s in final_results if s["probability"] >= min_probability]
+    
+    if not output:
+        st.info(f"ℹ️ Keine Aktie knackt aktuell deine Hürde von {min_probability}%.")
+        st.stop()
+        
+    output = sorted(output, key=lambda x: x["probability"], reverse=True)
+    st.markdown(f"### 💎 Identifizierte MSCI ACWI Top-Kandidaten (>={min_probability}%):")
+    
+    for s in output:
+        st.markdown(f"""
+            <div class="stock-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div>
+                        <span style="font-size: 1.6rem; font-weight: 800; color: #60a5fa;">📈 {s['ticker']}</span>
+                    </div>
+                    <span class="prob-badge">Ausbruchs-Wahrscheinlichkeit: {s['probability']}%</span>
+                </div>
+                <div style="font-size: 1.05rem; margin-bottom: 14px;">
+                    Live-Kurs: <b>${s['price']:.2f}</b> (<span style="color: {'#10b981' if s['change'] >= 0 else '#ef4444'}">{s['change']:+.2f}%</span>)
+                    &nbsp;|&nbsp; Foren-Sentiment: <b>{s['social_sentiment']}</b>
+                </div>
+                <div style="margin-bottom: 18px;">
+                    {"".join([f'<span class="signal-tag">{p}</span>' if "🔥" not in p else f'<span class="social-tag">{p}</span>' for p in s['patterns']])}
+                </div>
+                <div style="background: rgba(59, 130, 246, 0.05); padding: 14px; border-radius: 8px; border-left: 3px solid #3b82f6;">
+                    <span style="color: #60a5fa; font-weight: 700; font-size: 0.8rem; text-transform: uppercase;">🌐 Internationales KI-Lagebild</span><br>
+                    <p style="margin: 4px 0 0 0; font-size: 0.93rem; color: #cbd5e1;">{s['social_topic']}</p>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        df = s["df"]
+        fig = go.Figure(data=[go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'])])
+        fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=240, xaxis_rangeslider_visible=False)
+        st.plotly_chart(fig, use_container_width=True)
