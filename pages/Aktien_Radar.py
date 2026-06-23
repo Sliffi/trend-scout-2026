@@ -145,7 +145,7 @@ if not st.session_state.get("authenticated", False):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🎛️ Scan-Einstellungen")
-    min_score = st.slider("Mindest-Signal-Score", 0, 100, 35, 5,
+    min_score = st.slider("Mindest-Signal-Score", 0, 100, 70, 5,
                           help="Aktien unterhalb dieser Grenze werden nicht angezeigt.")
     max_ki = st.slider("Maximale KI-Analysen (Top-N)", 2, 12, 5, 1,
                        help="Wie viele Top-Kandidaten sollen per Gemini-KI analysiert werden?")
