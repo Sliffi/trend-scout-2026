@@ -67,16 +67,26 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ── KEY & SESSION-STATE FIX ──────────────────────────────────────────────────
+# Falls der Key in der Haupt-App hinterlegt war, versuchen wir ihn direkt abzugreifen
+if "GEMINI_API_KEY" not in st.session_state:
+    st.session_state["GEMINI_API_KEY"] = ""
+
 # ── SIDEBAR CONFIGURATION (Regler & Keys) ───────────────────────────────────
 with st.sidebar:
     st.markdown('<div style="font-weight:700; color:#10b981; margin-bottom:8px;">🛠️ SYSTEM-STEUERUNG</div>', unsafe_allow_html=True)
     
-    gemini_api_key = st.text_input(
+    # Neues verankertes Eingabefeld
+    input_key = st.text_input(
         "Gemini API-Key",
         type="password",
         placeholder="AQ... oder AIza...",
-        value=st.session_state.get("GEMINI_API_KEY", "")
+        value=st.session_state["GEMINI_API_KEY"]
     )
+    
+    # Sofort im Session-State speichern, wenn etwas eingetragen wurde
+    if input_key:
+        st.session_state["GEMINI_API_KEY"] = input_key
     
     st.markdown("---")
     st.markdown('<div style="font-weight:700; color:#3b82f6; margin-bottom:8px;">🎛️ SCHWELLE (REGLER)</div>', unsafe_allow_html=True)
@@ -183,7 +193,7 @@ def evaluate_stock_with_social(ticker, social_data):
             rsi = ta.momentum.rsi(df['Close'], window=14).iloc[-1]
             final_prob = int(35 + (rsi / 10))
 
-        return {{
+        return {
             "ticker": ticker,
             "name": stock.info.get("longName", ticker),
             "price": df['Close'].iloc[-1],
@@ -191,14 +201,17 @@ def evaluate_stock_with_social(ticker, social_data):
             "patterns": patterns,
             "probability": final_prob,
             "df": df
-        }}
+        }
     except Exception:
         return None
 
 # ── HAUPT-ANALYSEPROZESS ─────────────────────────────────────────────────────
 if scan_btn:
-    if not gemini_api_key:
-        st.error("🔑 Der Gemini API-Key wird zwingend benötigt.")
+    # Greift jetzt garantiert auf den globalen Speicher zu
+    active_key = st.session_state["GEMINI_API_KEY"]
+    
+    if not active_key or active_key.strip() == "":
+        st.error("🔑 Der Gemini API-Key wird zwingend benötigt. Bitte trage den Key in der Sidebar ein und bestätige kurz mit Enter.")
         st.stop()
         
     tickers_to_scan = MARKET_LISTS[market_type]
@@ -209,7 +222,7 @@ if scan_btn:
     
     for idx, ticker in enumerate(tickers_to_scan):
         status_text.markdown(f"📡 Scanne **{ticker}** ...")
-        social_res = fetch_social_volume_via_ki(gemini_api_key, ticker)
+        social_res = fetch_social_volume_via_ki(active_key, ticker)
         stock_res = evaluate_stock_with_social(ticker, social_res)
         
         if stock_res:
