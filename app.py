@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════╗
-║   LIVE TREND-SUCHMASCHINE   │   DACH-Raum 2026          ║
+║   LIVE TREND-SUCHMASCHINE   │   DACH-Raum 2026           ║
 ║   Powered by Google Gemini + Search Grounding            ║
 ╚══════════════════════════════════════════════════════════╝
 """
@@ -242,8 +242,8 @@ with st.sidebar:
         gemini_api_key = st.text_input(
             "Gemini API-Key",
             type="password",
-            placeholder="AIza...",
-            help="Google AI Studio → makersuite.google.com/app/apikey",
+            placeholder="AQ... oder AIza...",
+            help="Google AI Studio → aistudio.google.com",
         )
         if not gemini_api_key:
             st.info("💡 Trage deinen Gemini API-Key ein, um loszulegen.")
@@ -269,7 +269,7 @@ with st.sidebar:
     st.markdown(
         """
         <div style="font-size:0.8rem; color:#64748b; line-height:1.6;">
-        Diese App verwendet <b style="color:#a5b4fc">Google Gemini</b> mit aktiviertem 
+        Diese App verwendet <b style="color:#a5b4fc">Google Gemini 3.5 Pro</b> mit aktiviertem 
         <b style="color:#a5b4fc">Search Grounding</b>, um live aktuelle 
         Micro-Trends aus dem Social-Media-Universum zu identifizieren und zu analysieren.
         </div>
@@ -362,7 +362,7 @@ Sei präzise, kreativ und praxisnah. Kein Bullshit, nur echte Trends."""
 def call_gemini_with_grounding(api_key: str, prompt: str) -> dict:
     """
     Ruft die Gemini API mit aktiviertem Google Search Grounding auf.
-    Gibt das geparste JSON-Ergebnis zurück.
+    Unterstützt sowohl traditionelle AIza- als auch moderne AQ-Keys.
     """
     try:
         from google import genai
@@ -371,13 +371,17 @@ def call_gemini_with_grounding(api_key: str, prompt: str) -> dict:
         st.error("❌ Das Paket `google-genai` ist nicht installiert. Führe `pip install google-genai` aus.")
         st.stop()
 
-    client = genai.Client(api_key=api_key)
+    # Weiche für AQ- oder AIza-Keys zur korrekten Header-Authentifizierung
+    if api_key.startswith("AQ"):
+        client = genai.Client(api_key=api_key, http_options={'headers': {'X-Goog-Api-Key': api_key}})
+    else:
+        client = genai.Client(api_key=api_key)
 
     # Google Search Grounding aktivieren
     google_search_tool = types.Tool(google_search=types.GoogleSearch())
 
     response = client.models.generate_content(
-        model="gemini-2.5-pro",  # Neuestes Modell mit Grounding-Support
+        model="gemini-3.5-pro",  # Maximale Power für dein Pro-Abo im Jahr 2026
         contents=prompt,
         config=types.GenerateContentConfig(
             tools=[google_search_tool],
@@ -542,7 +546,7 @@ if analyse_btn:
         for i, msg in enumerate([
             "🌐 Google Search Grounding aktiviert …",
             "📡 TikTok, Instagram & Reddit werden gescannt …",
-            "🧠 Gemini analysiert Trends im DACH-Raum …",
+            "🧠 Gemini 3.5 Pro analysiert Trends im DACH-Raum …",
             "📊 Daten werden strukturiert & Diagramme vorbereitet …",
         ]):
             status_placeholder.markdown(
@@ -670,8 +674,8 @@ if analyse_btn:
         for t in trends:
             for month, score in t.get("monthly_scores", {}).items():
                 rows.append({"Trend": t["name"], "Monat": month, "Score": score,
-                              "Kategorie": t.get("category", ""),
-                              "Plattform": t.get("peak_platform", "")})
+                             "Kategorie": t.get("category", ""),
+                             "Plattform": t.get("peak_platform", "")})
         df_export = pd.DataFrame(rows)
         st.download_button(
             label="⬇️ CSV-Daten herunterladen",
