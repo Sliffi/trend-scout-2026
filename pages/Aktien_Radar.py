@@ -808,15 +808,21 @@ def render_output(output: list):
         ring_color = color
 
         # Logo HTML
-        logo_html = (
-            f'<img src="{logo_url}" style="width:48px;height:48px;border-radius:10px;"
-            f'object-fit:contain;background:#fff;padding:4px;border:1px solid #1e2433;" '
-            f'onerror="this.style.display=\'none\'">'
-            if logo_url else
-            f'<div style="width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,{color}40,{color}20);'
-            f'display:flex;align-items:center;justify-content:center;font-size:1.4rem;border:1px solid {color}40;">'
-            f'{emoji}</div>'
-        )
+        if logo_url:
+            logo_html = (
+                f'<img src="{logo_url}" '
+                f'style="width:48px;height:48px;border-radius:10px;object-fit:contain;'
+                f'background:#fff;padding:4px;border:1px solid #1e2433;" '
+                f'onerror="this.style.display=\'none\'">'
+            )
+        else:
+            logo_html = (
+                f'<div style="width:48px;height:48px;border-radius:10px;'
+                f'background:linear-gradient(135deg,{color}40,{color}20);'
+                f'display:flex;align-items:center;justify-content:center;'
+                f'font-size:1.4rem;border:1px solid {color}40;">'
+                f'{emoji}</div>'
+            )
 
         # ── Aktien-Karte ──────────────────────────────────────────────────────
         st.markdown(f"""
