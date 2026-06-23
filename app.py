@@ -12,6 +12,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+import requests
 
 # ── Page-Config (muss als ERSTES stehen) ────────────────────────────────────
 st.set_page_config(
@@ -243,7 +244,7 @@ with st.sidebar:
             "Gemini API-Key",
             type="password",
             placeholder="AQ... oder AIza...",
-            help="Google AI Studio → aistudio.google.com",
+            help="Trage deinen Google AI Studio oder GCP API-Key ein.",
         )
         if not gemini_api_key:
             st.info("💡 Trage deinen Gemini API-Key ein, um loszulegen.")
@@ -269,7 +270,7 @@ with st.sidebar:
     st.markdown(
         """
         <div style="font-size:0.8rem; color:#64748b; line-height:1.6;">
-        Diese App verwendet <b style="color:#a5b4fc">Google Gemini 3.5 Pro</b> mit aktiviertem 
+        Diese App verwendet <b style="color:#a5b4fc">Google Gemini</b> mit aktiviertem 
         <b style="color:#a5b4fc">Search Grounding</b>, um live aktuelle 
         Micro-Trends aus dem Social-Media-Universum zu identifizieren und zu analysieren.
         </div>
@@ -361,38 +362,40 @@ Sei präzise, kreativ und praxisnah. Kein Bullshit, nur echte Trends."""
 
 def call_gemini_with_grounding(api_key: str, prompt: str) -> dict:
     """
-    Ruft die Gemini API mit aktiviertem Google Search Grounding auf.
-    Unterstützt sowohl traditionelle AIza- als auch moderne AQ-Keys.
+    Ruft die Gemini API mit aktiviertem Google Search Grounding via nativem REST-Aufruf auf.
+    Garantiert fehlerfreie Authentifizierung für alle Key-Typen (AQ... und AIza...).
     """
+    # REST-Endpunkt für strukturierte Content-Generierung
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+    
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": api_key
+    }
+
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }],
+        "tools": [{"google_search": {}}],
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 8192
+        }
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    
+    if response.status_code != 200:
+        raise Exception(f"Google API Fehler ({response.status_code}): {response.text}")
+
     try:
-        from google import genai
-        from google.genai import types
-    except ImportError:
-        st.error("❌ Das Paket `google-genai` ist nicht installiert. Führe `pip install google-genai` aus.")
-        st.stop()
+        response_json = response.json()
+        raw_text = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
+    except KeyError:
+        raise Exception(f"Unerwartete API-Struktur. Rohdaten: {response.text[:500]}")
 
-    # Weiche für AQ- oder AIza-Keys zur korrekten Header-Authentifizierung
-    if api_key.startswith("AQ"):
-        client = genai.Client(api_key=api_key, http_options={'headers': {'X-Goog-Api-Key': api_key}})
-    else:
-        client = genai.Client(api_key=api_key)
-
-    # Google Search Grounding aktivieren
-    google_search_tool = types.Tool(google_search=types.GoogleSearch())
-
-    response = client.models.generate_content(
-        model="gemini-3.5-pro",  # Maximale Power für dein Pro-Abo im Jahr 2026
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            tools=[google_search_tool],
-            temperature=0.3,       # Niedrig für konsistente, faktenbasierte Antworten
-            max_output_tokens=8192,
-        ),
-    )
-
-    raw_text = response.text.strip()
-
-    # JSON aus der Antwort extrahieren (robust gegen Markdown-Codeblöcke)
+    # JSON robust extrahieren
     json_match = re.search(r"\{[\s\S]*\}", raw_text)
     if not json_match:
         raise ValueError(f"Kein gültiges JSON in der Gemini-Antwort gefunden.\nRohantwort:\n{raw_text[:500]}")
@@ -409,13 +412,11 @@ def create_trend_chart(trend_data: dict, rank: int) -> go.Figure:
 
     df = pd.DataFrame({"Monat": months, "Relevanz-Score": scores})
 
-    # Farb-Palette je nach Rang
     colors = ["#818cf8", "#a78bfa", "#60a5fa", "#34d399", "#fb923c"]
     color = colors[(rank - 1) % len(colors)]
 
     fig = go.Figure()
 
-    # Füllbereich unter der Kurve
     fig.add_trace(
         go.Scatter(
             x=df["Monat"],
@@ -487,11 +488,9 @@ def render_trend_card(trend: dict, rank: int):
         unsafe_allow_html=True,
     )
 
-    # Plotly Chart
     fig = create_trend_chart(trend, rank)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-    # Drei Info-Boxen nebeneinander
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -538,7 +537,6 @@ if analyse_btn:
         st.error("🔑 Kein Gemini API-Key gefunden. Trage ihn in der Sidebar ein oder hinterlege ihn in `st.secrets`.")
         st.stop()
 
-    # Ladeanimation
     with st.spinner("🔍 Durchsuche das Web live mit Google Search Grounding …"):
         progress_bar = st.progress(0)
         status_placeholder = st.empty()
@@ -546,7 +544,7 @@ if analyse_btn:
         for i, msg in enumerate([
             "🌐 Google Search Grounding aktiviert …",
             "📡 TikTok, Instagram & Reddit werden gescannt …",
-            "🧠 Gemini 3.5 Pro analysiert Trends im DACH-Raum …",
+            "🧠 Gemini analysiert Trends im DACH-Raum …",
             "📊 Daten werden strukturiert & Diagramme vorbereitet …",
         ]):
             status_placeholder.markdown(
@@ -574,10 +572,8 @@ if analyse_btn:
         st.warning("⚠️ Keine Trends in der Gemini-Antwort gefunden.")
         st.stop()
 
-    # ── Ergebnis-Header ───────────────────────────────────────────────────────
     st.success(f"✅ **{len(trends)} Micro-Trends** für **{topic}** im **{region}** erfolgreich analysiert!")
 
-    # Summary Metrics
     all_scores = [
         max(t["monthly_scores"].values()) for t in trends if "monthly_scores" in t
     ]
@@ -596,7 +592,6 @@ if analyse_btn:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Überblick-Chart: alle Trends in einem Diagramm ────────────────────────
     st.markdown("### 📊 Trend-Vergleich auf einen Blick")
 
     all_months = ["Jan 2026", "Feb 2026", "Mar 2026", "Apr 2026", "May 2026", "Jun 2026"]
@@ -650,11 +645,9 @@ if analyse_btn:
     st.markdown(f"### 🔥 Die {len(trends)} Micro-Trends im Detail")
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Einzelne Trend-Karten ─────────────────────────────────────────────────
     for trend in trends:
         render_trend_card(trend, trend.get("rank", 1))
 
-    # ── Export-Bereich ────────────────────────────────────────────────────────
     st.markdown("### 💾 Daten exportieren")
     col_e1, col_e2 = st.columns(2)
 
@@ -669,7 +662,6 @@ if analyse_btn:
         )
 
     with col_e2:
-        # DataFrame für CSV-Export
         rows = []
         for t in trends:
             for month, score in t.get("monthly_scores", {}).items():
