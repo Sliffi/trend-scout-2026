@@ -98,6 +98,50 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ── Passwortschutz ────────────────────────────────────────────────────────────
+_APP_PASSWORD = "bvb"
+
+if not st.session_state.get("authenticated", False):
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    col_l, col_c, col_r = st.columns([1, 1.4, 1])
+    with col_c:
+        st.markdown("""
+        <div style="
+            background: #1a1e2e;
+            border: 1px solid #2e3450;
+            border-radius: 18px;
+            padding: 40px 36px 32px 36px;
+            text-align: center;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        ">
+            <div style="font-size: 3rem; margin-bottom: 10px;">🔐</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: #e2e8f0; margin-bottom: 6px;">
+                Zugang gesperrt
+            </div>
+            <div style="font-size: 0.9rem; color: #8892b0; margin-bottom: 24px;">
+                Bitte Passwort eingeben, um den MSCI ACWI Radar zu öffnen.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        pw_input = st.text_input(
+            "Passwort",
+            type="password",
+            placeholder="Passwort eingeben …",
+            label_visibility="collapsed",
+        )
+        login_btn = st.button("🔓 Einloggen", use_container_width=True, type="primary")
+
+        if login_btn:
+            if pw_input == _APP_PASSWORD:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("❌ Falsches Passwort. Bitte erneut versuchen.")
+
+    st.stop()  # Rest der App nicht rendern bis eingeloggt
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🎛️ Scan-Einstellungen")
