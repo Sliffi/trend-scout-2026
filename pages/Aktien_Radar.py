@@ -20,6 +20,7 @@
 
 import json
 import re
+import time
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
@@ -62,7 +63,38 @@ st.markdown("""
             letter-spacing: 0.08em;
             margin-bottom: 4px;
         }
-        .stExpander { background: #1a1e2e !important; border: 1px solid #2e3450 !important; border-radius: 10px !important; }
+        /* ── Expander: dunkler Hintergrund, lesbare Schrift ─────────────── */
+        /* Rahmen und Hintergrund des gesamten Expander-Blocks */
+        div[data-testid="stExpander"] {
+            background: #1a1e2e !important;
+            border: 1px solid #2e3450 !important;
+            border-radius: 10px !important;
+        }
+        /* Summary-Zeile (Titel des Expanders) */
+        div[data-testid="stExpander"] summary {
+            background: #1a1e2e !important;
+            color: #e2e8f0 !important;
+            border-radius: 10px !important;
+        }
+        div[data-testid="stExpander"] summary:hover {
+            background: #232842 !important;
+        }
+        div[data-testid="stExpander"] summary span,
+        div[data-testid="stExpander"] summary p {
+            color: #e2e8f0 !important;
+        }
+        /* Inhaltsbereich des Expanders */
+        div[data-testid="stExpander"] details > div,
+        div[data-testid="stExpanderDetails"] {
+            background: #1a1e2e !important;
+            color: #c8d3e8 !important;
+            border-top: 1px solid #2e3450 !important;
+            padding: 12px 16px !important;
+        }
+        div[data-testid="stExpander"] details > div p,
+        div[data-testid="stExpanderDetails"] p {
+            color: #c8d3e8 !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -441,6 +473,8 @@ Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish"."""
 
 
 # ── Scan-Button ───────────────────────────────────────────────────────────────
+CACHE_TTL_SECONDS = 300  # 5 Minuten
+
 scan_btn = st.button(
     f"🚀  Globalen Premium-Scan starten  "
     f"({len(MARKET_LISTS[market_type])} Aktien analysieren)",
@@ -449,9 +483,188 @@ scan_btn = st.button(
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HAUPT-SCAN-LOGIK
+# CACHE-CHECK: Gleiche Anfrage innerhalb von 5 Min → direkt Ergebnis zeigen
 # ══════════════════════════════════════════════════════════════════════════════
+def render_output(output: list):
+    """Rendert die fertige Ergebnisliste (ausgelagert, damit Cache + Live denselben Code nutzen)."""
+    st.header(f"📊 Ausbruchs-Report — {len(output)} Top-Kandidaten")
+    st.divider()
+
+    for s in output:
+        emoji, color = score_badge(s["score"])
+
+        col_title, col_badge = st.columns([3, 1])
+        with col_title:
+            st.subheader(f"{s['name']}  ({s['ticker']})")
+            color_word = "green" if s["change"] >= 0 else "red"
+            st.markdown(
+                f"Aktueller Kurs: **\\${s['price']:.2f}** "
+                f"(:{color_word}[{s['change']:+.2f}%])"
+            )
+        with col_badge:
+            st.markdown(f"""
+            <div style="
+                background:{color}18;
+                border: 2px solid {color};
+                border-radius:14px;
+                padding:18px 10px;
+                text-align:center;
+                font-family:'Inter',sans-serif;">
+                <div style="font-size:2rem;">{emoji}</div>
+                <div style="font-size:2rem; font-weight:700; color:{color}; line-height:1.1;">
+                    {s['score']}<span style="font-size:1rem; color:#8892b0;">/100</span>
+                </div>
+                <div style="font-size:0.75rem; color:#8892b0; text-transform:uppercase;
+                            letter-spacing:0.1em; margin-top:4px;">Signal-Score</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # KI-Score-Zusammenfassung & Haltedauer
+        holding   = s.get("holding_period", "Keine Schätzung verfügbar.")
+        brief     = s.get("score_brief", "")
+        hold_lower = holding.lower()
+        if any(w in hold_lower for w in ["tag", "tage", "days"]):
+            hold_emoji = "⚡"
+        elif any(w in hold_lower for w in ["woche", "wochen", "week"]):
+            hold_emoji = "📅"
+        else:
+            hold_emoji = "🗓️"
+
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, {color}12, {color}06);
+            border-left: 4px solid {color};
+            border-radius: 0 12px 12px 0;
+            padding: 16px 20px;
+            margin: 12px 0 18px 0;
+            font-family: 'Inter', sans-serif;
+        ">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                <span style="font-size:1.4rem;">{emoji}</span>
+                <span style="font-weight:700; color:{color}; font-size:1.05rem;">
+                    Signal-Score {s['score']}/100 — KI-Bewertung
+                </span>
+            </div>
+            <p style="margin:0 0 10px 0; color:#c8d3e8; font-size:0.92rem; line-height:1.55;">
+                {brief}
+            </p>
+            <div style="
+                display:inline-flex; align-items:center; gap:6px;
+                background:#1a1e2e; border:1px solid #2e3450;
+                border-radius:8px; padding:6px 14px;
+            ">
+                <span style="font-size:1.1rem;">{hold_emoji}</span>
+                <span style="color:#94a3b8; font-size:0.78rem; text-transform:uppercase;
+                            letter-spacing:0.07em;">Voraussichtliche Haltedauer:</span>
+                <span style="color:#e2e8f0; font-weight:600; font-size:0.9rem;">{holding}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("### 🏢 Was macht das Unternehmen? *(einfach erklärt)*")
+        st.success(s["summary"])
+
+        st.markdown("### 📊 Wichtige Finanz-Kennzahlen")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Börsenwert", s["cap"])
+        m2.metric("KGV (Bewertung)", s["pe"])
+        m3.metric("52-Wochen-Hoch ✅", f"${s['high_52w']:.2f}")
+        m4.metric("52-Wochen-Tief ✅", f"${s['low_52w']:.2f}")
+
+        st.markdown("### 💡 Warum schlägt das System Alarm?")
+        for sig, exp in zip(s["signals"], s["explanations"]):
+            with st.expander(sig, expanded=False):
+                st.markdown(exp)
+
+        st.markdown("### 🌐 KI-Lagebild & Social Media Stimmung")
+        sentiment_map = {
+            "Bullish": st.success,
+            "Neutral": st.info,
+            "Bearish": st.error,
+        }
+        sentiment_fn = sentiment_map.get(s["sentiment"], st.info)
+        sentiment_fn(f"**Forum-Stimmung:** {s['sentiment']}\n\n{s['hot_topic']}")
+
+        st.markdown("### 📉 Technischer Chartverlauf *(letzte 6 Monate)*")
+        df = s["df"]
+        close_s = df["Close"].astype(float)
+        ma50_s  = close_s.rolling(50).mean()
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(
+            x=df.index,
+            open=df["Open"], high=df["High"],
+            low=df["Low"],   close=df["Close"],
+            increasing_line_color="#10b981",
+            decreasing_line_color="#ef4444",
+            name="Kurs",
+        ))
+        fig.add_trace(go.Scatter(
+            x=df.index, y=ma50_s, mode="lines",
+            line=dict(color="#f59e0b", width=1.8, dash="dash"),
+            name="MA50 (50-Tage-Ø)",
+        ))
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="#161925", plot_bgcolor="#161925",
+            height=430, margin=dict(l=20, r=20, t=35, b=20),
+            xaxis_rangeslider_visible=False,
+            xaxis=dict(showgrid=True, gridcolor="#2e3440"),
+            yaxis=dict(showgrid=True, gridcolor="#2e3440", side="right"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                        bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "💡 **Lesehilfe:** Jede Kerze = ein Handelstag. "
+            "🟢 Grün = Kurs gestiegen, 🔴 Rot = Kurs gefallen. "
+            "Die **gelbe gestrichelte Linie** ist der 50-Tage-Durchschnitt (MA50) – "
+            "liegt der Kurs darüber, ist ein Aufwärtstrend bestätigt."
+        )
+        st.divider()
+
+
 if scan_btn:
+    cache = st.session_state.get("scan_cache", {})
+    cache_key = market_type  # Cache-Schlüssel = gewähltes Universum
+    cache_age = time.time() - cache.get("timestamp", 0)
+    cache_hit  = (
+        cache.get("key") == cache_key
+        and cache_age < CACHE_TTL_SECONDS
+        and cache.get("output")
+    )
+
+    if cache_hit:
+        remaining = int(CACHE_TTL_SECONDS - cache_age)
+        mins, secs = divmod(remaining, 60)
+        st.markdown(f"""
+        <div style="
+            background: #1a2a1a;
+            border: 1px solid #2d6a2d;
+            border-left: 4px solid #10b981;
+            border-radius: 0 10px 10px 0;
+            padding: 12px 18px;
+            margin-bottom: 16px;
+            font-family: 'Inter', sans-serif;
+            display: flex; align-items: center; gap: 10px;
+        ">
+            <span style="font-size:1.4rem;">⚡</span>
+            <div>
+                <span style="color:#10b981; font-weight:700;">Cache-Treffer!</span>
+                <span style="color:#8ebd8e; font-size:0.9rem;">
+                    Dieselbe Analyse von vor {int(cache_age // 60)}m {int(cache_age % 60)}s wird angezeigt.
+                    Cache läuft in <strong style="color:#e2e8f0;">{mins}m {secs:02d}s</strong> ab.
+                </span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        col_info, col_reload = st.columns([5, 1])
+        with col_reload:
+            if st.button("🔄 Neu laden", help="Cache umgehen und frischen Scan starten"):
+                st.session_state.pop("scan_cache", None)
+                st.rerun()
+        render_output(cache["output"])
+        st.stop()
+
 
     # ── API-Key ───────────────────────────────────────────────────────────────
     try:
@@ -659,155 +872,12 @@ if scan_btn:
         )
         st.stop()
 
-    # ── Report-Ausgabe ────────────────────────────────────────────────────────
-    st.header(f"📊 Ausbruchs-Report — {len(output)} Top-Kandidaten")
-    st.divider()
+    # ── Ergebnis im Session-State cachen (5 Minuten) ─────────────────────────
+    st.session_state["scan_cache"] = {
+        "key":       market_type,
+        "timestamp": time.time(),
+        "output":    output,
+    }
 
-    for s in output:
-        emoji, color = score_badge(s["score"])
-
-        col_title, col_badge = st.columns([3, 1])
-        with col_title:
-            st.subheader(f"{s['name']}  ({s['ticker']})")
-            color_word = "green" if s["change"] >= 0 else "red"
-            st.markdown(
-                f"Aktueller Kurs: **${s['price']:.2f}** "
-                f"(:{color_word}[{s['change']:+.2f}%])"
-            )
-        with col_badge:
-            st.markdown(f"""
-            <div style="
-                background:{color}18;
-                border: 2px solid {color};
-                border-radius:14px;
-                padding:18px 10px;
-                text-align:center;
-                font-family:'Inter',sans-serif;">
-                <div style="font-size:2rem;">{emoji}</div>
-                <div style="font-size:2rem; font-weight:700; color:{color}; line-height:1.1;">
-                    {s['score']}<span style="font-size:1rem; color:#8892b0;">/100</span>
-                </div>
-                <div style="font-size:0.75rem; color:#8892b0; text-transform:uppercase;
-                            letter-spacing:0.1em; margin-top:4px;">Signal-Score</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # ── KI-Score-Zusammenfassung & Haltedauer (NEU) ─────────────────────
-        emoji_badge, color_badge = score_badge(s["score"])
-        holding = s.get("holding_period", "Keine Schätzung verfügbar.")
-        brief   = s.get("score_brief", "")
-
-        # Haltedauer-Emoji je nach Kürze
-        hold_lower = holding.lower()
-        if any(w in hold_lower for w in ["tag", "tage", "days"]):
-            hold_emoji = "⚡"
-        elif any(w in hold_lower for w in ["woche", "wochen", "week"]):
-            hold_emoji = "📅"
-        else:
-            hold_emoji = "🗓️"
-
-        st.markdown(f"""
-        <div style="
-            background: linear-gradient(135deg, {color_badge}12, {color_badge}06);
-            border-left: 4px solid {color_badge};
-            border-radius: 0 12px 12px 0;
-            padding: 16px 20px;
-            margin: 12px 0 18px 0;
-            font-family: 'Inter', sans-serif;
-        ">
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                <span style="font-size:1.4rem;">{emoji_badge}</span>
-                <span style="font-weight:700; color:{color_badge}; font-size:1.05rem;">
-                    Signal-Score {s['score']}/100 — KI-Bewertung
-                </span>
-            </div>
-            <p style="margin:0 0 10px 0; color:#c8d3e8; font-size:0.92rem; line-height:1.55;">
-                {brief}
-            </p>
-            <div style="
-                display:inline-flex; align-items:center; gap:6px;
-                background:#1a1e2e; border:1px solid #2e3450;
-                border-radius:8px; padding:6px 14px;
-            ">
-                <span style="font-size:1.1rem;">{hold_emoji}</span>
-                <span style="color:#94a3b8; font-size:0.78rem; text-transform:uppercase;
-                            letter-spacing:0.07em;">Voraussichtliche Haltedauer:</span>
-                <span style="color:#e2e8f0; font-weight:600; font-size:0.9rem;">{holding}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Unternehmens-Beschreibung
-        st.markdown("### 🏢 Was macht das Unternehmen? *(einfach erklärt)*")
-        st.success(s["summary"])
-
-        # Kennzahlen
-        st.markdown("### 📊 Wichtige Finanz-Kennzahlen")
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Börsenwert", s["cap"])
-        m2.metric("KGV (Bewertung)", s["pe"])
-        # FIX: echte 52w-Werte aus yf.Ticker().info
-        m3.metric("52-Wochen-Hoch ✅", f"${s['high_52w']:.2f}")
-        m4.metric("52-Wochen-Tief ✅", f"${s['low_52w']:.2f}")
-
-        # Signale als aufklappbare Expander (übersichtlicher als Bullet-Liste)
-        st.markdown("### 💡 Warum schlägt das System Alarm?")
-        for sig, exp in zip(s["signals"], s["explanations"]):
-            with st.expander(sig, expanded=False):
-                st.markdown(exp)
-
-        # KI-Stimmung
-        st.markdown("### 🌐 KI-Lagebild & Social Media Stimmung")
-        sentiment_map = {
-            "Bullish": st.success,
-            "Neutral": st.info,
-            "Bearish": st.error,
-        }
-        sentiment_fn = sentiment_map.get(s["sentiment"], st.info)
-        sentiment_fn(f"**Forum-Stimmung:** {s['sentiment']}\n\n{s['hot_topic']}")
-
-        # Candlestick-Chart mit MA50-Linie
-        st.markdown("### 📉 Technischer Chartverlauf *(letzte 6 Monate)*")
-        df = s["df"]
-        close_s = df["Close"].astype(float)
-        # FIX: MA50-Linie im Chart (NEU)
-        ma50_s = close_s.rolling(50).mean()
-
-        fig = go.Figure()
-        fig.add_trace(go.Candlestick(
-            x=df.index,
-            open=df["Open"], high=df["High"],
-            low=df["Low"],   close=df["Close"],
-            increasing_line_color="#10b981",
-            decreasing_line_color="#ef4444",
-            name="Kurs",
-        ))
-        fig.add_trace(go.Scatter(
-            x=df.index,
-            y=ma50_s,
-            mode="lines",
-            line=dict(color="#f59e0b", width=1.8, dash="dash"),
-            name="MA50 (50-Tage-Ø)",
-        ))
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#161925",
-            plot_bgcolor="#161925",
-            height=430,
-            margin=dict(l=20, r=20, t=35, b=20),
-            xaxis_rangeslider_visible=False,
-            xaxis=dict(showgrid=True, gridcolor="#2e3440"),
-            yaxis=dict(showgrid=True, gridcolor="#2e3440", side="right"),
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02,
-                bgcolor="rgba(0,0,0,0)", font=dict(size=11),
-            ),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption(
-            "💡 **Lesehilfe:** Jede Kerze = ein Handelstag. "
-            "🟢 Grün = Kurs gestiegen, 🔴 Rot = Kurs gefallen. "
-            "Die **gelbe gestrichelte Linie** ist der 50-Tage-Durchschnitt (MA50) – "
-            "liegt der Kurs darüber, ist ein Aufwärtstrend bestätigt."
-        )
-        st.divider()
+    # ── Report rendern (dieselbe Funktion wie bei Cache-Treffer) ──────────────
+    render_output(output)
