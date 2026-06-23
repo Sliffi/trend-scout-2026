@@ -651,12 +651,14 @@ Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish"."""
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=30)
         res.raise_for_status()
-        raw = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        # Greedy-Suche: letztes vollständiges JSON-Objekt bevorzugen
-        matches = list(re.finditer(r"\{[\s\S]*?\}", raw))
-        if not matches:
+        # Alle parts zusammenfügen (Gemini mit googleSearch kann mehrere parts zurückgeben)
+        parts = res.json()["candidates"][0]["content"]["parts"]
+        raw = " ".join(p.get("text", "") for p in parts).strip()
+        # Greedy-Suche: findet das größte vollständige JSON-Objekt
+        match = re.search(r"\{[\s\S]*\}", raw)
+        if not match:
             raise ValueError("Kein JSON-Objekt im Response gefunden.")
-        return json.loads(matches[-1].group(0))
+        return json.loads(match.group(0))
     except Exception:
         sig_count = len(signals)
         return {
@@ -991,12 +993,16 @@ if scan_btn:
         )
         st.stop()
 
-    # Sortieren + filtern
+    # Sortieren
     math_results = sorted(math_results, key=lambda x: x["score"], reverse=True)
-    filtered = [r for r in math_results if r["score"] >= min_score]
+
+    # Vor-Filter: etwas großzügiger als min_score, da Phase 3 noch +25 Punkte vergeben kann
+    # (+15 echtes 52w-High, +10 KI-Sentiment). Endgültiger Filter erst nach Phase 3.
+    pre_filter_score = max(0, min_score - 25)
+    filtered = [r for r in math_results if r["score"] >= pre_filter_score]
 
     if not filtered:
-        best_score = math_results[0]["score"] if math_results else 0
+        best_score  = math_results[0]["score"]  if math_results else 0
         best_ticker = math_results[0]["ticker"] if math_results else "–"
         st.markdown(f"""
         <div style="
@@ -1018,17 +1024,14 @@ if scan_btn:
                 Bester gefundener Score: <strong style="color:#e2e8f0;">{best_score}/100</strong>
                 ({best_ticker})<br>
                 <strong>Mögliche Gründe:</strong><br>
-                &nbsp; • <strong>Marktzeiten:</strong> Nach US-Börsenschluss (22:00 Uhr MEZ) kann
-                  das heutige Handelsvolumen in yfinance noch nicht aktuell sein → Volumen-Signal (+20 Pkt) fällt weg.<br>
-                &nbsp; • <strong>Marktstimmung:</strong> Heute war ein ruhiger Tag ohne starke Ausbrüche.<br>
-                &nbsp; • <strong>Schwellenwert:</strong> Mindest-Score im Sidebar auf <strong>{min_score}</strong> eingestellt — ggf. senken.
+                &nbsp;• <strong>Marktzeiten:</strong> Nach US-Börsenschluss (22:00 MEZ) fehlt oft das Volumen-Signal (+20 Pkt).<br>
+                &nbsp;• <strong>Marktstimmung:</strong> Heute war ein ruhiger Tag ohne starke Ausbrüche.<br>
+                &nbsp;• <strong>Schwellenwert:</strong> Mindest-Score im Sidebar auf <strong>{min_score}</strong> — ggf. senken.
             </div>
         </div>
         """, unsafe_allow_html=True)
-
-        # Zeige Top-5 trotzdem an (mit Hinweis)
         if math_results:
-            st.info(f"📋 **Zeige trotzdem die Top {min(5, len(math_results))} besten Kandidaten** – auch wenn sie unter dem Mindest-Score liegen:")
+            st.info(f"📋 **Zeige trotzdem die Top {min(5, len(math_results))} besten Kandidaten:**")
             filtered = math_results[:5]
         else:
             st.stop()
