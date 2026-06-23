@@ -362,30 +362,40 @@ def compute_signals(df: pd.DataFrame, high_52w: float | None = None):
     return max(0, min(score, 100)), signals, explanations
 
 
-def run_ki_analysis(api_key: str, ticker: str, english_summary: str) -> dict:
+def run_ki_analysis(
+    api_key: str,
+    ticker: str,
+    english_summary: str,
+    signals: list,
+    score: int,
+) -> dict:
     """
     Ruft Gemini 2.5 Flash mit aktivierter Google-Search-Grounding auf.
-
-    FIX vs. V8.2:
-      - Korrekter JSON-Key: "googleSearch" (camelCase)
-      - timeout=30 für Netzwerk-Stabilität
-      - Robusteres JSON-Parsing mit Fallback-Dict
+    Gibt german_summary, sentiment, hot_topic, score_brief und holding_period zurück.
     """
+    signals_text = "\n".join(f"  - {s}" for s in signals) if signals else "  - Keine Signale"
+
     prompt = f"""Du bist ein professioneller, laienfreundlicher Finanzanalyst für deutschsprachige Anfänger.
 
 Aktie: {ticker}
 Englische Unternehmensbeschreibung: "{english_summary}"
+Aktuell erkannte technische Signale (Score: {score}/100):
+{signals_text}
 
 Aufgaben:
 1. Nutze Google Search, um aktuelle Nachrichten und Social-Media-Stimmung (Reddit, X/Twitter, Finanznachrichten) zu '{ticker}' für Juni 2026 zu finden.
 2. Erkläre das Unternehmen in genau 3 einfachen deutschen Sätzen (Was stellt es her? Womit verdient es Geld?).
 3. Bewerte die aktuelle Marktstimmung.
+4. Erkläre in 2-3 Sätzen auf Anfänger-Niveau, WARUM das System einen Score von {score}/100 vergeben hat – beziehe dich konkret auf die erkannten Signale.
+5. Schätze eine realistische Haltedauer für diesen Trade (z.B. "3–7 Tage", "2–4 Wochen", "1–3 Monate") und begründe sie in einem Satz.
 
 Antworte NUR mit einem gültigen JSON-Objekt, kein Text davor oder danach:
 {{
   "german_summary": "Satz 1. Satz 2. Satz 3.",
   "sentiment": "Bullish",
-  "hot_topic": "Ein prägnanter deutscher Satz über das aktuelle Geschehen in Foren und Nachrichten."
+  "hot_topic": "Ein prägnanter deutscher Satz über das aktuelle Geschehen in Foren und Nachrichten.",
+  "score_brief": "2-3 Sätze, die dem Anfänger erklären, warum der Score so hoch/niedrig ist.",
+  "holding_period": "z.B. 2–4 Wochen – Begründung in einem Satz."
 }}
 
 Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish"."""
@@ -393,7 +403,6 @@ Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish"."""
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     headers = {"Content-Type": "application/json", "X-Goog-Api-Key": api_key}
 
-    # FIX: korrekter camelCase-Key "googleSearch" (nicht "google_search")
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "tools": [{"googleSearch": {}}],
@@ -403,11 +412,13 @@ Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish"."""
         res = requests.post(url, headers=headers, json=payload, timeout=30)
         res.raise_for_status()
         raw = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        match = re.search(r"\{[\s\S]*?\}", raw)
-        if not match:
+        # Greedy-Suche: letztes vollständiges JSON-Objekt bevorzugen
+        matches = list(re.finditer(r"\{[\s\S]*?\}", raw))
+        if not matches:
             raise ValueError("Kein JSON-Objekt im Response gefunden.")
-        return json.loads(match.group(0))
+        return json.loads(matches[-1].group(0))
     except Exception:
+        sig_count = len(signals)
         return {
             "german_summary": (
                 "Dieses international tätige Unternehmen ist in einem "
@@ -420,6 +431,12 @@ Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish"."""
                 "Aktuelle KI-Analyse nicht verfügbar – "
                 "bitte Gemini-API-Key prüfen oder Rate-Limit beachten."
             ),
+            "score_brief": (
+                f"Das System hat {sig_count} technische Signal(e) erkannt und daraus "
+                f"einen Score von {score}/100 berechnet. "
+                "Je mehr Signale gleichzeitig aktiv sind, desto höher die Punktzahl."
+            ),
+            "holding_period": "Keine Schätzung verfügbar – KI-Analyse fehlgeschlagen.",
         }
 
 
@@ -596,10 +613,13 @@ if scan_btn:
         score, signals, explanations = compute_signals(stock["df"], high_52w=high_52w)
 
         # KI-Analyse mit Google Search Grounding
+        # Übergabe der Signale + Score → KI erklärt den Score auf Anfänger-Niveau
         ki = run_ki_analysis(
             active_key,
             stock["ticker"],
             english_summary or company_name,
+            signals=signals,
+            score=score,
         )
 
         # Sentiment-Bonus: +10 für Bullish, 0 sonst
@@ -609,17 +629,19 @@ if scan_btn:
 
         final_results.append({
             **stock,
-            "name":         company_name,
-            "summary":      ki.get("german_summary", ""),
-            "pe":           pe_ratio,
-            "cap":          market_cap,
-            "high_52w":     high_52w,
-            "low_52w":      low_52w,
-            "score":        final_score,
-            "signals":      signals,
-            "explanations": explanations,
-            "sentiment":    sentiment,
-            "hot_topic":    ki.get("hot_topic", ""),
+            "name":           company_name,
+            "summary":        ki.get("german_summary", ""),
+            "pe":             pe_ratio,
+            "cap":            market_cap,
+            "high_52w":       high_52w,
+            "low_52w":        low_52w,
+            "score":          final_score,
+            "signals":        signals,
+            "explanations":   explanations,
+            "sentiment":      sentiment,
+            "hot_topic":      ki.get("hot_topic", ""),
+            "score_brief":    ki.get("score_brief", ""),
+            "holding_period": ki.get("holding_period", "Keine Schätzung verfügbar."),
         })
 
     prog_ki.empty()
@@ -669,6 +691,51 @@ if scan_btn:
                             letter-spacing:0.1em; margin-top:4px;">Signal-Score</div>
             </div>
             """, unsafe_allow_html=True)
+
+        # ── KI-Score-Zusammenfassung & Haltedauer (NEU) ─────────────────────
+        emoji_badge, color_badge = score_badge(s["score"])
+        holding = s.get("holding_period", "Keine Schätzung verfügbar.")
+        brief   = s.get("score_brief", "")
+
+        # Haltedauer-Emoji je nach Kürze
+        hold_lower = holding.lower()
+        if any(w in hold_lower for w in ["tag", "tage", "days"]):
+            hold_emoji = "⚡"
+        elif any(w in hold_lower for w in ["woche", "wochen", "week"]):
+            hold_emoji = "📅"
+        else:
+            hold_emoji = "🗓️"
+
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, {color_badge}12, {color_badge}06);
+            border-left: 4px solid {color_badge};
+            border-radius: 0 12px 12px 0;
+            padding: 16px 20px;
+            margin: 12px 0 18px 0;
+            font-family: 'Inter', sans-serif;
+        ">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                <span style="font-size:1.4rem;">{emoji_badge}</span>
+                <span style="font-weight:700; color:{color_badge}; font-size:1.05rem;">
+                    Signal-Score {s['score']}/100 — KI-Bewertung
+                </span>
+            </div>
+            <p style="margin:0 0 10px 0; color:#c8d3e8; font-size:0.92rem; line-height:1.55;">
+                {brief}
+            </p>
+            <div style="
+                display:inline-flex; align-items:center; gap:6px;
+                background:#1a1e2e; border:1px solid #2e3450;
+                border-radius:8px; padding:6px 14px;
+            ">
+                <span style="font-size:1.1rem;">{hold_emoji}</span>
+                <span style="color:#94a3b8; font-size:0.78rem; text-transform:uppercase;
+                            letter-spacing:0.07em;">Voraussichtliche Haltedauer:</span>
+                <span style="color:#e2e8f0; font-weight:600; font-size:0.9rem;">{holding}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
         # Unternehmens-Beschreibung
         st.markdown("### 🏢 Was macht das Unternehmen? *(einfach erklärt)*")
