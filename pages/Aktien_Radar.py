@@ -332,7 +332,13 @@ def _analyse_single_ticker(ticker: str, api_key: str) -> list:
                              signals=signals, score=score)
 
     sentiment   = ki.get("sentiment", "Neutral")
-    final_score = min(score + (10 if sentiment.lower() == "bullish" else 0), 100)
+    sentiment_bonus = 10 if sentiment.lower() == "bullish" else 0
+    final_score = min(score + sentiment_bonus, 100)
+
+    # Score-Brief aktualisieren: falls KI den alten Score erwähnt, durch final_score ersetzen
+    score_brief = ki.get("score_brief", "")
+    if score_brief and score != final_score:
+        score_brief = score_brief.replace(f"{score}/100", f"{final_score}/100")
 
     return [{
         "ticker":         ticker,
@@ -345,13 +351,15 @@ def _analyse_single_ticker(ticker: str, api_key: str) -> list:
         "sentiment":      sentiment,
         "summary":        ki.get("german_summary", ""),
         "hot_topic":      ki.get("hot_topic", ""),
-        "score_brief":    ki.get("score_brief", ""),
+        "score_brief":    score_brief,
         "holding_period": ki.get("holding_period", "Keine Schätzung."),
+        "recommendation": ki.get("recommendation", "HOLD"),
         "pe":             pe_ratio,
         "cap":            market_cap,
         "high_52w":       high_52w,
         "low_52w":        low_52w,
         "df":             df_ticker,
+        "logo_url":       f"https://assets.parqet.com/logos/symbol/{ticker}?format=png",
     }]
 
 
@@ -694,6 +702,7 @@ Aufgaben:
 3. Bewerte die aktuelle Marktstimmung.
 4. Erkläre in 2-3 Sätzen auf Anfänger-Niveau, WARUM das System einen Score von {score}/100 vergeben hat – beziehe dich konkret auf die erkannten Signale.
 5. Schätze eine realistische Haltedauer für diesen Trade (z.B. "3–7 Tage", "2–4 Wochen", "1–3 Monate") und begründe sie in einem Satz.
+6. Gib eine klare Handlungsempfehlung: BUY (kaufen), HOLD (halten) oder SELL (verkaufen/meiden). Berücksichtige dabei den technischen Score, die aktuellen Nachrichten und die Gesamtstimmung.
 
 Antworte NUR mit einem gültigen JSON-Objekt, kein Text davor oder danach:
 {{
@@ -701,10 +710,12 @@ Antworte NUR mit einem gültigen JSON-Objekt, kein Text davor oder danach:
   "sentiment": "Bullish",
   "hot_topic": "Ein prägnanter deutscher Satz über das aktuelle Geschehen in Foren und Nachrichten.",
   "score_brief": "2-3 Sätze, die dem Anfänger erklären, warum der Score so hoch/niedrig ist.",
-  "holding_period": "z.B. 2–4 Wochen – Begründung in einem Satz."
+  "holding_period": "z.B. 2–4 Wochen – Begründung in einem Satz.",
+  "recommendation": "BUY"
 }}
 
-Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish"."""
+Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish".
+Erlaubte Werte für 'recommendation': "BUY", "HOLD", "SELL"."""
 
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     headers = {"Content-Type": "application/json", "X-Goog-Api-Key": api_key}
@@ -745,6 +756,7 @@ Erlaubte Werte für 'sentiment': "Bullish", "Neutral", "Bearish"."""
                 "Je mehr Signale gleichzeitig aktiv sind, desto höher die Punktzahl."
             ),
             "holding_period": "Keine Schätzung verfügbar – KI-Analyse fehlgeschlagen.",
+            "recommendation": "HOLD" if score >= 50 else "SELL",
         }
 
 
@@ -886,7 +898,48 @@ def render_output(output: list):
         </div>
         """, unsafe_allow_html=True)
 
+        # ── KI-Handlungsempfehlung (BUY / HOLD / SELL) ────────────────────────
+        rec = s.get("recommendation", "HOLD").upper().strip()
+        rec_cfg = {
+            "BUY":  ("#10b981", "#052e16", "#6ee7b7", "📈 KAUFEN",
+                     "Die KI empfiehlt den Kauf dieser Aktie. Technische Signale und Marktstimmung zeigen eine überdurchschnittliche Chance auf steigende Kurse."),
+            "HOLD": ("#f59e0b", "#1c1400", "#fcd34d", "⏸️ HALTEN",
+                     "Die KI empfiehlt, diese Position zu halten oder abzuwarten. Kein klarer Kauf- oder Verkaufszeitpunkt erkennbar."),
+            "SELL": ("#ef4444", "#2d0a0a", "#fca5a5", "📉 VERKAUFEN / MEIDEN",
+                     "Die KI rät von einem Kauf ab. Risiken überwiegen oder die technische Lage ist zu schwach für einen Einstieg."),
+        }.get(rec, ("#6366f1", "#1e1b4b", "#a5b4fc", "⏸️ HALTEN", "Keine klare Empfehlung verfügbar."))
+        rc, rbg, rtxt, rlabel, rdesc = rec_cfg
+
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, {rbg}, rgba(0,0,0,0.2));
+            border: 2px solid {rc};
+            border-radius: 16px;
+            padding: 18px 24px;
+            margin: 8px 0 12px 0;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        ">
+            <div style="text-align:center; min-width:90px; flex-shrink:0;">
+                <div style="font-family:'Space Grotesk',sans-serif; font-size:1.6rem;
+                            font-weight:900; color:{rc}; letter-spacing:0.05em; line-height:1;">
+                    {rlabel}
+                </div>
+                <div style="font-size:0.65rem; color:{rc}80; text-transform:uppercase;
+                            letter-spacing:0.1em; margin-top:3px; font-weight:600;">
+                    KI-Empfehlung
+                </div>
+            </div>
+            <div style="width:1px; height:40px; background:{rc}40; flex-shrink:0;"></div>
+            <div style="color:{rtxt}; font-size:0.88rem; line-height:1.55;">
+                {rdesc}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
         # ── KI-Bewertungs-Box ──────────────────────────────────────────────────
+
         st.markdown(f"""
         <div style="
             background: linear-gradient(135deg, {color}0e, {color}04);
@@ -1347,6 +1400,11 @@ if scan_btn:
         sentiment_bonus = 10 if sentiment.lower() == "bullish" else 0
         final_score = min(score + sentiment_bonus, 100)
 
+        # Score-Brief aktualisieren: alter Score durch final_score ersetzen
+        score_brief = ki.get("score_brief", "")
+        if score_brief and score != final_score:
+            score_brief = score_brief.replace(f"{score}/100", f"{final_score}/100")
+
         final_results.append({
             **stock,
             "name":           company_name,
@@ -1360,10 +1418,12 @@ if scan_btn:
             "explanations":   explanations,
             "sentiment":      sentiment,
             "hot_topic":      ki.get("hot_topic", ""),
-            "score_brief":    ki.get("score_brief", ""),
+            "score_brief":    score_brief,
             "holding_period": ki.get("holding_period", "Keine Schätzung verfügbar."),
+            "recommendation": ki.get("recommendation", "HOLD"),
             "logo_url":       logo_url,
         })
+
 
     prog_ki.empty()
     status_ki.empty()
