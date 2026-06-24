@@ -720,44 +720,109 @@ Erlaubte Werte für 'recommendation': "BUY", "HOLD", "SELL"."""
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     headers = {"Content-Type": "application/json", "X-Goog-Api-Key": api_key}
 
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "tools": [{"googleSearch": {}}],
-    }
+    def _extract_json(text: str) -> dict:
+        """Versucht JSON aus dem Antworttext zu extrahieren – mehrere Strategien."""
+        # 1) Markdown-Codeblock entfernen: ```json ... ``` oder ``` ... ```
+        cleaned = re.sub(r"```(?:json)?\s*([\s\S]*?)\s*```", r"\1", text).strip()
+        # 2) Direkt parsen falls der gereinigte Text valides JSON ist
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            pass
+        # 3) Größtes JSON-Objekt per greedy Regex suchen
+        match = re.search(r"\{[\s\S]*\}", cleaned)
+        if match:
+            return json.loads(match.group(0))
+        # 4) Original-Text als letzter Versuch
+        match = re.search(r"\{[\s\S]*\}", text)
+        if match:
+            return json.loads(match.group(0))
+        raise ValueError("Kein gültiges JSON im Response gefunden.")
 
-    try:
-        res = requests.post(url, headers=headers, json=payload, timeout=30)
+    def _call_api(use_search: bool) -> dict:
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+        }
+        if use_search:
+            payload["tools"] = [{"googleSearch": {}}]
+
+        res = requests.post(url, headers=headers, json=payload, timeout=90)
         res.raise_for_status()
-        # Alle parts zusammenfügen (Gemini mit googleSearch kann mehrere parts zurückgeben)
         parts = res.json()["candidates"][0]["content"]["parts"]
         raw = " ".join(p.get("text", "") for p in parts).strip()
-        # Greedy-Suche: findet das größte vollständige JSON-Objekt
-        match = re.search(r"\{[\s\S]*\}", raw)
-        if not match:
-            raise ValueError("Kein JSON-Objekt im Response gefunden.")
-        return json.loads(match.group(0))
-    except Exception:
-        sig_count = len(signals)
-        return {
-            "german_summary": (
-                "Dieses international tätige Unternehmen ist in einem "
-                "nachgefragten Marktsegment aktiv und generiert stabile Einnahmen. "
-                "Es verfügt über eine solide Marktstellung und diversifizierte Produkte. "
-                "Die langfristige Strategie zielt auf nachhaltiges Wachstum ab."
-            ),
-            "sentiment": "Neutral",
-            "hot_topic": (
-                "Aktuelle KI-Analyse nicht verfügbar – "
-                "bitte Gemini-API-Key prüfen oder Rate-Limit beachten."
-            ),
-            "score_brief": (
-                f"Das System hat {sig_count} technische Signal(e) erkannt und daraus "
-                f"einen Score von {score}/100 berechnet. "
-                "Je mehr Signale gleichzeitig aktiv sind, desto höher die Punktzahl."
-            ),
-            "holding_period": "Keine Schätzung verfügbar – KI-Analyse fehlgeschlagen.",
-            "recommendation": "HOLD" if score >= 50 else "SELL",
-        }
+        return _extract_json(raw)
+
+    last_error = ""
+    for attempt in range(2):
+        try:
+            # Erster Versuch: mit Google Search Grounding
+            result = _call_api(use_search=True)
+            # Fehlende Pflichtfelder mit Defaults füllen
+            result.setdefault("sentiment", "Neutral")
+            result.setdefault("recommendation", "HOLD" if score >= 60 else "SELL")
+            result.setdefault("holding_period", "Keine Schätzung verfügbar.")
+            result.setdefault("hot_topic", "Keine aktuellen Nachrichten verfügbar.")
+            result.setdefault("score_brief", f"Score {score}/100 basiert auf {len(signals)} erkannten Signalen.")
+            result.setdefault("german_summary", "Keine Beschreibung verfügbar.")
+            return result
+        except requests.exceptions.HTTPError as e:
+            last_error = f"HTTP {e.response.status_code}"
+            if e.response.status_code == 429:
+                # Rate-Limit: 5 Sekunden warten, dann erneut versuchen
+                time.sleep(5)
+                continue
+            # Bei anderen HTTP-Fehlern: direkt Fallback
+            break
+        except requests.exceptions.Timeout:
+            last_error = "Timeout (>90s)"
+            if attempt == 0:
+                time.sleep(2)
+                continue
+            break
+        except (json.JSONDecodeError, ValueError) as e:
+            last_error = f"JSON-Parse-Fehler: {e}"
+            if attempt == 0:
+                # Einmal ohne Search-Grounding versuchen (einfachere Antwort)
+                try:
+                    result = _call_api(use_search=False)
+                    result.setdefault("sentiment", "Neutral")
+                    result.setdefault("recommendation", "HOLD" if score >= 60 else "SELL")
+                    result.setdefault("holding_period", "Keine Schätzung verfügbar.")
+                    result.setdefault("hot_topic", "Keine aktuellen Nachrichten verfügbar.")
+                    result.setdefault("score_brief", f"Score {score}/100 basiert auf {len(signals)} erkannten Signalen.")
+                    result.setdefault("german_summary", "Keine Beschreibung verfügbar.")
+                    return result
+                except Exception as e2:
+                    last_error = f"JSON-Parse (ohne Search): {e2}"
+            break
+        except Exception as e:
+            last_error = str(e)
+            break
+
+    # Fallback mit erklärungsreichem Fehlertext
+    sig_count = len(signals)
+    return {
+        "german_summary": (
+            "Dieses international tätige Unternehmen ist in einem "
+            "nachgefragten Marktsegment aktiv und generiert stabile Einnahmen. "
+            "Es verfügt über eine solide Marktstellung und diversifizierte Produkte. "
+            "Die langfristige Strategie zielt auf nachhaltiges Wachstum ab."
+        ),
+        "sentiment": "Neutral",
+        "hot_topic": (
+            f"⚠️ KI-Analyse fehlgeschlagen ({last_error}). "
+            "Mögliche Ursachen: Rate-Limit erreicht (kurz warten), "
+            "API-Key ungültig, oder Gemini-Server temporär überlastet."
+        ),
+        "score_brief": (
+            f"Das System hat {sig_count} technische Signal(e) erkannt und daraus "
+            f"einen Score von {score}/100 berechnet. "
+            "Je mehr Signale gleichzeitig aktiv sind, desto höher die Punktzahl."
+        ),
+        "holding_period": "Keine Schätzung verfügbar – KI-Analyse fehlgeschlagen.",
+        "recommendation": "HOLD" if score >= 60 else "SELL",
+    }
+
 
 
 
