@@ -776,28 +776,55 @@ with tab_scan:
 # ══════════════════════════════════════════════════════════════════════════════
 # CACHE-CHECK: Gleiche Anfrage innerhalb von 5 Min → direkt Ergebnis zeigen
 # ══════════════════════════════════════════════════════════════════════════════
-def render_output(output: list):
+def render_output(output: list, single: bool = False):
     """Rendert die fertige Ergebnisliste – Premium UI mit Logos & Hover-Effekten."""
 
     # ── Header ────────────────────────────────────────────────────────────────
-    st.markdown(f"""
-    <div style="
-        background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(16,185,129,0.06));
-        border: 1px solid rgba(99,102,241,0.25);
-        border-radius: 20px;
-        padding: 28px 32px;
-        margin-bottom: 32px;
-        font-family: 'Space Grotesk', sans-serif;
-        text-align: center;
-    ">
-        <div style="font-size:2.4rem; font-weight:800; color:#f1f5f9; letter-spacing:-0.02em;">
-            📊 Ausbruchs-Report
+    if single and output:
+        s0 = output[0]
+        emoji0, color0 = score_badge(s0["score"])
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(16,185,129,0.06));
+            border: 1px solid rgba(99,102,241,0.25);
+            border-radius: 20px;
+            padding: 24px 32px;
+            margin-bottom: 28px;
+            font-family: 'Space Grotesk', sans-serif;
+        ">
+            <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+                <div style="font-size:2rem;">🔍</div>
+                <div>
+                    <div style="font-size:1.5rem; font-weight:800; color:#f1f5f9; letter-spacing:-0.02em;">
+                        Einzelanalyse: {s0['name']}
+                    </div>
+                    <div style="color:#64748b; font-size:0.85rem; margin-top:3px;">
+                        Ticker: <strong style="color:#818cf8;">{s0['ticker']}</strong>
+                        &nbsp;·&nbsp; Aktueller Kurs: <strong style="color:#e2e8f0;">${s0['price']:.2f}</strong>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div style="color:#818cf8; font-size:1rem; margin-top:6px; font-weight:500;">
-            {len(output)} vielversprechende Kandidat{'en' if len(output)!=1 else ''} gefunden
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(16,185,129,0.06));
+            border: 1px solid rgba(99,102,241,0.25);
+            border-radius: 20px;
+            padding: 28px 32px;
+            margin-bottom: 32px;
+            font-family: 'Space Grotesk', sans-serif;
+            text-align: center;
+        ">
+            <div style="font-size:2.4rem; font-weight:800; color:#f1f5f9; letter-spacing:-0.02em;">
+                📊 Ausbruchs-Report
+            </div>
+            <div style="color:#818cf8; font-size:1rem; margin-top:6px; font-weight:500;">
+                {len(output)} vielversprechende Kandidat{'en' if len(output)!=1 else ''} gefunden
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
     for rank, s in enumerate(output, 1):
         emoji, color = score_badge(s["score"])
@@ -1115,10 +1142,9 @@ if st.session_state.get("single_ticker"):
         st.stop()
 
     st.divider()
-    st.markdown(f"## 🔍 Einzelanalyse: **{ticker_to_analyse}**")
     result = _analyse_single_ticker(ticker_to_analyse, active_key)
     if result:
-        render_output(result)
+        render_output(result, single=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1: Universum-Scan
