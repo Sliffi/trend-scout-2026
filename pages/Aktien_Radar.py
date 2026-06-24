@@ -340,6 +340,15 @@ def _analyse_single_ticker(ticker: str, api_key: str) -> list:
     if score_brief and score != final_score:
         score_brief = score_brief.replace(f"{score}/100", f"{final_score}/100")
 
+    # KI-Empfehlung basierend auf dem finalen Score deckeln/korrigieren
+    rec_raw = ki.get("recommendation", "HOLD").upper().strip()
+    if final_score >= 70:
+        recommendation = rec_raw
+    elif final_score >= 50:
+        recommendation = "HOLD" if rec_raw == "BUY" else rec_raw
+    else:
+        recommendation = "SELL"
+
     return [{
         "ticker":         ticker,
         "name":           company_name,
@@ -353,7 +362,7 @@ def _analyse_single_ticker(ticker: str, api_key: str) -> list:
         "hot_topic":      ki.get("hot_topic", ""),
         "score_brief":    score_brief,
         "holding_period": ki.get("holding_period", "Keine Schätzung."),
-        "recommendation": ki.get("recommendation", "HOLD"),
+        "recommendation": recommendation,
         "pe":             pe_ratio,
         "cap":            market_cap,
         "high_52w":       high_52w,
@@ -1496,6 +1505,15 @@ if scan_btn:
         if score_brief and score != final_score:
             score_brief = score_brief.replace(f"{score}/100", f"{final_score}/100")
 
+        # KI-Empfehlung basierend auf dem finalen Score deckeln/korrigieren
+        rec_raw = ki.get("recommendation", "HOLD").upper().strip()
+        if final_score >= 70:
+            recommendation = rec_raw
+        elif final_score >= 50:
+            recommendation = "HOLD" if rec_raw == "BUY" else rec_raw
+        else:
+            recommendation = "SELL"
+
         final_results.append({
             **stock,
             "name":           company_name,
@@ -1511,7 +1529,7 @@ if scan_btn:
             "hot_topic":      ki.get("hot_topic", ""),
             "score_brief":    score_brief,
             "holding_period": ki.get("holding_period", "Keine Schätzung verfügbar."),
-            "recommendation": ki.get("recommendation", "HOLD"),
+            "recommendation": recommendation,
             "logo_url":       logo_url,
         })
 
